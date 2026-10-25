@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>DeFi activity dashboard</title>
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="DeFi activity home"
+        ><span class="brand-mark" aria-hidden="true">D</span>DeFi activity</a
+      >
+      <span id="source" class="source">Loading dataset</span>
+    </header>
+    <main>
+      <div class="heading">
+        <div>
+          <p class="context">Base / Morpho Blue</p>
+          <h1>Liquidation activity</h1>
+          <p class="description">
+            Explore repaid debt and transaction ordering, one block at a time.
+          </p>
+        </div>
+        <div id="summary" class="summary" aria-live="polite"></div>
+      </div>
+      <div class="toolbar">
+        <div class="filters">
+          <label
+            >Market<select id="market">
+              <option value="">All markets</option>
+              <option value="ETH">WETH / USDC</option>
+              <option value="BTC">cbBTC / USDC</option>
+              <option value="CBETH">cbETH / USDC</option>
+            </select></label
+          >
+          <label
+            >Order<select id="sort">
+              <option value="newest">Newest block</option>
+              <option value="largest">Largest debt repaid</option>
+            </select></label
+          >
+        </div>
+        <span id="period" class="period"></span>
+      </div>
+      <p id="notice" class="notice">
+        The bundled dataset is synthetic. It demonstrates the interface; it does
+        not report trading results.
+      </p>
+      <div class="workspace">
+        <section class="ledger" aria-label="Liquidation records">
+          <div class="section-heading">
+            <h2>Block records</h2>
+            <span id="count" aria-live="polite"></span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Block / UTC</th>
+                  <th scope="col">Market</th>
+                  <th scope="col" class="number">Positions</th>
+                  <th scope="col" class="number">Debt repaid / USDC</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+          <p id="status" role="status" class="status">Loading activity…</p>
+          <div class="pagination">
+            <button id="reset" type="button">Back to first page</button
+            ><button id="more" type="button" disabled>Load more</button>
+          </div>
+        </section>
+        <aside
+          id="detail"
+          class="detail"
+          aria-label="Selected block details"
+          aria-live="polite"
+        >
+          <p>Select a block to inspect its liquidations.</p>
+        </aside>
+      </div>
+      <footer>
+        Read-only activity explorer · Amounts are debt repaid, not profit ·
+        Built by Adam Du
+      </footer>
+    </main>
+  </body>
+</html>

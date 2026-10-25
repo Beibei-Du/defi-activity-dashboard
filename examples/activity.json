@@ -1,0 +1,422 @@
+{
+  "label": "Synthetic Base liquidation activity",
+  "synthetic": true,
+  "blocks": [
+    {
+      "market": "ETH",
+      "block": 44000000,
+      "timestamp": 1768032000,
+      "positions": 2,
+      "repaid_usdc": "125000000000",
+      "oracle_index": 20,
+      "liquidation_index": 24,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 01",
+          "repaid_usdc": "41666666666"
+        },
+        {
+          "borrower": "Sample borrower 02",
+          "repaid_usdc": "83333333334"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000000,
+      "timestamp": 1768032000,
+      "positions": 1,
+      "repaid_usdc": "43800000000",
+      "oracle_index": 20,
+      "liquidation_index": 25,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 03",
+          "repaid_usdc": "43800000000"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000000,
+      "timestamp": 1768032000,
+      "positions": 1,
+      "repaid_usdc": "18600000000",
+      "oracle_index": 20,
+      "liquidation_index": 26,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 05",
+          "repaid_usdc": "18600000000"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000006,
+      "timestamp": 1768032012,
+      "positions": 1,
+      "repaid_usdc": "43800000000",
+      "oracle_index": 21,
+      "liquidation_index": 25,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 07",
+          "repaid_usdc": "43800000000"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000006,
+      "timestamp": 1768032012,
+      "positions": 1,
+      "repaid_usdc": "18600000000",
+      "oracle_index": 21,
+      "liquidation_index": 26,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 09",
+          "repaid_usdc": "18600000000"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000006,
+      "timestamp": 1768032012,
+      "positions": 2,
+      "repaid_usdc": "125000000000",
+      "oracle_index": 21,
+      "liquidation_index": 27,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 11",
+          "repaid_usdc": "41666666666"
+        },
+        {
+          "borrower": "Sample borrower 12",
+          "repaid_usdc": "83333333334"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000012,
+      "timestamp": 1768032024,
+      "positions": 1,
+      "repaid_usdc": "18600000000",
+      "oracle_index": 22,
+      "liquidation_index": 26,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 13",
+          "repaid_usdc": "18600000000"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000012,
+      "timestamp": 1768032024,
+      "positions": 2,
+      "repaid_usdc": "125000000000",
+      "oracle_index": 22,
+      "liquidation_index": 27,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 15",
+          "repaid_usdc": "41666666666"
+        },
+        {
+          "borrower": "Sample borrower 16",
+          "repaid_usdc": "83333333334"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000012,
+      "timestamp": 1768032024,
+      "positions": 1,
+      "repaid_usdc": "8250000000",
+      "oracle_index": 22,
+      "liquidation_index": 28,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 17",
+          "repaid_usdc": "8250000000"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000018,
+      "timestamp": 1768032036,
+      "positions": 2,
+      "repaid_usdc": "125000000000",
+      "oracle_index": 23,
+      "liquidation_index": 27,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 19",
+          "repaid_usdc": "41666666666"
+        },
+        {
+          "borrower": "Sample borrower 20",
+          "repaid_usdc": "83333333334"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000018,
+      "timestamp": 1768032036,
+      "positions": 1,
+      "repaid_usdc": "8250000000",
+      "oracle_index": 23,
+      "liquidation_index": 28,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 21",
+          "repaid_usdc": "8250000000"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000018,
+      "timestamp": 1768032036,
+      "positions": 1,
+      "repaid_usdc": "67400000000",
+      "oracle_index": 23,
+      "liquidation_index": 29,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 23",
+          "repaid_usdc": "67400000000"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000024,
+      "timestamp": 1768032048,
+      "positions": 1,
+      "repaid_usdc": "8250000000",
+      "oracle_index": 24,
+      "liquidation_index": 28,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 25",
+          "repaid_usdc": "8250000000"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000024,
+      "timestamp": 1768032048,
+      "positions": 1,
+      "repaid_usdc": "67400000000",
+      "oracle_index": 24,
+      "liquidation_index": 29,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 27",
+          "repaid_usdc": "67400000000"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000024,
+      "timestamp": 1768032048,
+      "positions": 2,
+      "repaid_usdc": "2750000000",
+      "oracle_index": 24,
+      "liquidation_index": 30,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 29",
+          "repaid_usdc": "916666666"
+        },
+        {
+          "borrower": "Sample borrower 30",
+          "repaid_usdc": "1833333334"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000030,
+      "timestamp": 1768032060,
+      "positions": 1,
+      "repaid_usdc": "67400000000",
+      "oracle_index": 25,
+      "liquidation_index": 29,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 31",
+          "repaid_usdc": "67400000000"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000030,
+      "timestamp": 1768032060,
+      "positions": 2,
+      "repaid_usdc": "2750000000",
+      "oracle_index": 25,
+      "liquidation_index": 30,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 33",
+          "repaid_usdc": "916666666"
+        },
+        {
+          "borrower": "Sample borrower 34",
+          "repaid_usdc": "1833333334"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000030,
+      "timestamp": 1768032060,
+      "positions": 1,
+      "repaid_usdc": "31200000000",
+      "oracle_index": 25,
+      "liquidation_index": 31,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 35",
+          "repaid_usdc": "31200000000"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000036,
+      "timestamp": 1768032072,
+      "positions": 2,
+      "repaid_usdc": "2750000000",
+      "oracle_index": 26,
+      "liquidation_index": 30,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 37",
+          "repaid_usdc": "916666666"
+        },
+        {
+          "borrower": "Sample borrower 38",
+          "repaid_usdc": "1833333334"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000036,
+      "timestamp": 1768032072,
+      "positions": 1,
+      "repaid_usdc": "31200000000",
+      "oracle_index": 26,
+      "liquidation_index": 31,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 39",
+          "repaid_usdc": "31200000000"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000036,
+      "timestamp": 1768032072,
+      "positions": 1,
+      "repaid_usdc": "125000000000",
+      "oracle_index": 26,
+      "liquidation_index": 32,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 41",
+          "repaid_usdc": "125000000000"
+        }
+      ]
+    },
+    {
+      "market": "ETH",
+      "block": 44000042,
+      "timestamp": 1768032084,
+      "positions": 1,
+      "repaid_usdc": "31200000000",
+      "oracle_index": 27,
+      "liquidation_index": 31,
+      "liquidator": "Sample solver 1",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 43",
+          "repaid_usdc": "31200000000"
+        }
+      ]
+    },
+    {
+      "market": "BTC",
+      "block": 44000042,
+      "timestamp": 1768032084,
+      "positions": 1,
+      "repaid_usdc": "125000000000",
+      "oracle_index": 27,
+      "liquidation_index": 32,
+      "liquidator": "Sample solver 2",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 45",
+          "repaid_usdc": "125000000000"
+        }
+      ]
+    },
+    {
+      "market": "CBETH",
+      "block": 44000042,
+      "timestamp": 1768032084,
+      "positions": 2,
+      "repaid_usdc": "43800000000",
+      "oracle_index": 27,
+      "liquidation_index": 33,
+      "liquidator": "Sample solver 3",
+      "liquidations": [
+        {
+          "borrower": "Sample borrower 47",
+          "repaid_usdc": "14600000000"
+        },
+        {
+          "borrower": "Sample borrower 48",
+          "repaid_usdc": "29200000000"
+        }
+      ]
+    }
+  ]
+}
