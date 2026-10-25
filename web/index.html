@@ -1,92 +1,2510 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>DeFi activity dashboard</title>
-    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <link rel="stylesheet" href="/style.css" />
-    <script src="/app.js" defer></script>
-  </head>
-  <body>
-    <header class="topbar">
-      <a class="brand" href="/" aria-label="DeFi activity home"
-        ><span class="brand-mark" aria-hidden="true">D</span>DeFi activity</a
-      >
-      <span id="source" class="source">Loading dataset</span>
-    </header>
-    <main>
-      <div class="heading">
-        <div>
-          <p class="context">Base / Morpho Blue</p>
-          <h1>Liquidation activity</h1>
-          <p class="description">
-            Explore repaid debt and transaction ordering, one block at a time.
-          </p>
-        </div>
-        <div id="summary" class="summary" aria-live="polite"></div>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>liq-dashboard | mock data</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg:#0b0d10; --col:#0f1318; --panel:#0c1014; --panel-hd:#11161c;
+    --border:#222933; --border2:#1b2128;
+    --fg:#d7dde3; --muted:#cdd5df; --accent:#8ab4f8;
+    --g:#4ade80; --y:#facc15; --r:#f87171;
+    /* fixed section body heights — sections never reflow each other */
+    --h-state:32px; --h-econ:54px;
+    --h-pred:244px; --h-onchain:212px; --h-cand:300px;
+    --h-totals:48px; --h-events:300px;
+    --row-h:23px;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; }
+  body { font:13px/1.45 ui-monospace, Menlo, Consolas, monospace; background:var(--bg); color:var(--fg); overflow-x:hidden; }
+
+  /* ── top bar ─────────────────────────────────────────────── */
+  header { position:sticky; top:0; z-index:10; height:38px; display:flex; gap:16px;
+           align-items:center; padding:0 14px; background:var(--panel-hd);
+           border-bottom:1px solid var(--border); white-space:nowrap; overflow:hidden; }
+  header b { font-size:14px; }
+  .price-chip { background:#161d26; border:1px solid #2a3441; border-radius:4px; padding:2px 8px; }
+
+  /* ── two-column grid ─────────────────────────────────────── */
+  .col-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:12px; align-items:start; }
+  @media (max-width:900px) { .col-grid { grid-template-columns:1fr; } }
+  .col { border:1px solid var(--border); border-radius:8px; background:var(--col);
+         padding:10px; display:flex; flex-direction:column; gap:8px; min-width:0; }
+
+  .col-head { display:flex; align-items:center; gap:10px; height:24px; }
+  .col-title { font-weight:bold; font-size:15px; }
+  .col-head .spacer { flex:1; }
+  label.sw { cursor:pointer; user-select:none; font-size:12px; color:var(--muted); display:flex; align-items:center; gap:4px; }
+
+  /* ── panel: fixed-height title + fixed-height body ───────── */
+  .panel { border:1px solid var(--border); border-radius:6px; background:var(--panel); overflow:hidden; min-width:0; }
+  .panel-hd { display:flex; align-items:center; height:22px; padding:0 8px; gap:8px;
+              background:var(--panel-hd); border-bottom:1px solid var(--border);
+              font-size:12px; white-space:nowrap; overflow:hidden; }
+  .panel-hd .pt { color:var(--accent); font-weight:bold; flex-shrink:0; }
+  .panel-hd .pmeta { margin-left:auto; color:var(--muted); overflow:hidden; text-overflow:ellipsis;
+                     min-width:0; text-align:right; }
+  .panel-bd { padding:5px 8px; overflow:auto; }
+  /* fixed body heights so a section's size never depends on its data */
+  .bd-state    { height:var(--h-state);    overflow:hidden; }
+  .bd-runtime  { min-height:96px; }  /* inline editor; grows on Advanced-expand (user-driven, not data) */
+  .bd-econ     { height:var(--h-econ);     overflow:hidden; }
+  .bd-pred     { height:var(--h-pred);     }
+  .bd-onchain  { height:var(--h-onchain);  }
+  .bd-cand     { height:var(--h-cand);     }
+  .bd-totals   { height:var(--h-totals);   }
+  .bd-events   { height:var(--h-events);   }
+  .panel-bd::-webkit-scrollbar { width:8px; height:8px; }
+  .panel-bd::-webkit-scrollbar-thumb { background:#2a3441; border-radius:4px; }
+  .panel-bd::-webkit-scrollbar-track { background:transparent; }
+
+  .line { margin:1px 0; white-space:nowrap; }
+  .empty { color:var(--muted); padding-top:2px; }
+
+  /* ── tables: fixed layout so columns never jitter ────────── */
+  table { border-collapse:collapse; width:100%; table-layout:fixed; }
+  thead th { position:sticky; top:0; background:var(--panel); z-index:1; }
+  th, td { text-align:left; padding:0 6px; height:var(--row-h);
+           border-bottom:1px solid var(--border2); white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; }
+  th { color:#b8c2ce; font-weight:normal; font-size:11px; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  td.c, th.c { text-align:center; }
+
+  /* ── full-width footer panels ────────────────────────────── */
+  .wide { margin:0 12px 12px; }
+
+  /* ── color helpers ───────────────────────────────────────── */
+  .g { color:var(--g); } .y { color:var(--y); } .r { color:var(--r); }
+  .rb { color:var(--r); font-weight:bold; } .dim { color:var(--muted); }
+  .b { font-weight:bold; }
+  .ok-badge { color:var(--g); font-weight:bold; }
+  .stale-badge { color:var(--y); font-weight:bold; }
+  .down-badge { color:var(--r); font-weight:bold; }
+  .live { color:var(--r); font-weight:bold; } .dry { color:var(--g); font-weight:bold; }
+  .age-g { color:var(--g); } .age-y { color:var(--y); } .age-r { color:var(--r); }
+  .alloc-y { color:var(--y); } .alloc-r { color:var(--r); font-weight:bold; } .alloc-dim { color:var(--muted); }
+  .stale-hdr { color:var(--r); }
+  .banner-err { background:#1e1010; border:1px solid #5a2020; border-radius:6px;
+                padding:8px 12px; color:var(--r); font-weight:bold; margin:10px 12px; }
+  .pill { border:1px solid var(--border); border-radius:10px; padding:0 7px; font-size:11px; }
+  .pill.g { border-color:#1f5132; } .pill.r { border-color:#5a2020; } .pill.y { border-color:#5a4a14; }
+  /* runtime-config inline editor */
+  .rt2-line { margin:3px 0; white-space:normal; }
+  /* label+control pairs stay together but the LINE wraps to the next row instead of
+     forcing a horizontal scrollbar (which the 2s refresh kept resetting). */
+  .rt2-kv { white-space:nowrap; display:inline-flex; align-items:center; gap:3px; margin-right:12px; }
+  .rt2-flag { cursor:pointer; border:1px solid var(--border); border-radius:4px; padding:1px 6px; margin-right:4px; font-size:12px; }
+  .rt2-live { color:var(--r); border-color:#5a2020; font-weight:bold; }
+  .rt2-dry  { color:var(--g); border-color:#1f5132; }
+  .rt2-srow { display:flex; align-items:center; gap:6px; min-height:24px; white-space:nowrap; }
+  .rt2-radio { display:flex; align-items:center; gap:4px; cursor:pointer; min-width:104px; flex-shrink:0; }
+  .rt2-radio input { cursor:pointer; }
+  .rt2-hint { font-size:12px; }
+  .rt2-dials { color:var(--muted); font-size:12px; display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+  .rt2-num { background:#0b0f14; color:var(--fg); border:1px solid var(--border); border-radius:4px;
+             padding:1px 4px; font:inherit; text-align:right; }
+  .rt2-btn { font:inherit; font-size:12px; padding:1px 8px; border-radius:4px; border:1px solid var(--border); cursor:pointer; }
+  .rt2-btn:disabled { opacity:.55; cursor:wait; }
+  .rt2-start { background:#14331c; border-color:#1f5132; color:var(--g); font-weight:bold; }
+  .rt2-stop  { background:#3a1414; border-color:#5a2020; color:var(--r); font-weight:bold; }
+  .restart-btn { color:var(--y); border-color:#5a4a14; background:#211c0d; }
+  .rt2-adv-h { cursor:pointer; color:var(--accent); font-size:12px; margin-top:4px; user-select:none; }
+  .rt2-adv { border-top:1px solid var(--border2); margin-top:2px; padding-top:2px; }
+  .rt2-chk { display:inline-flex; align-items:center; gap:4px; cursor:pointer; }
+  /* transient page-level notice (survives the 2s #cols/#totals/#bar re-render) */
+  .toast { position:fixed; bottom:14px; right:14px; z-index:200; max-width:380px;
+           padding:8px 12px; border-radius:6px; border:1px solid var(--border);
+           background:var(--col); font-weight:bold; box-shadow:0 2px 10px rgba(0,0,0,0.45); }
+  .toast.g { color:var(--g); border-color:#1f5132; }
+  .toast.r { color:var(--r); border-color:#5a2020; }
+  .toast.y { color:var(--y); border-color:#5a4a14; }
+
+  /* ── tab bar ─────────────────────────────────────────────── */
+  #tab-bar { display:flex; gap:0; padding:0 12px; background:var(--panel-hd); border-bottom:1px solid var(--border); }
+  .tab-btn { background:none; border:none; border-bottom:2px solid transparent;
+             color:var(--muted); cursor:pointer; outline:none;
+             font:13px/1.45 ui-monospace, Menlo, Consolas, monospace;
+             padding:6px 14px; letter-spacing:0.03em; }
+  .tab-btn:hover { color:var(--fg); }
+  .tab-btn.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:bold; }
+
+  /* ── accent links ────────────────────────────────────────────── */
+  a.accent-link { color:var(--accent); text-decoration:none; }
+  a.accent-link:hover { text-decoration:underline; }
+
+  /* ── viewport flex: both tab views fill remaining height ─────── */
+  body { height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+  #app { flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+  #live-view { flex:1; overflow-y:auto; }
+  /* #liq-view display is managed entirely by JS (flex=visible / none=hidden) */
+  #liq-view  { flex:1; min-height:0; flex-direction:column; overflow:hidden; }
+
+  /* ── LIQUIDATIONS: filters bar ───────────────────────────────── */
+  .liq-filters { display:flex; gap:6px; align-items:center; flex-wrap:wrap; flex-shrink:0;
+                 padding:6px 12px; background:var(--panel-hd); border-bottom:1px solid var(--border); }
+  .liq-filters label { font-size:12px; color:var(--muted); white-space:nowrap;
+                       display:flex; align-items:center; gap:4px; }
+  .liq-fi { font:12px ui-monospace, Menlo, Consolas, monospace;
+            background:#0b0f14; color:var(--fg); border:1px solid var(--border);
+            border-radius:4px; padding:2px 5px; outline:none; }
+  .liq-fi:focus { border-color:var(--accent); }
+  select.liq-fi { cursor:pointer; }
+  input.liq-fi[type=number] { width:74px; }
+  input.liq-fi[type=date]   { width:120px; }
+  input.liq-jump { width:90px; }
+  .liq-sep  { width:1px; height:18px; background:var(--border); flex-shrink:0; margin:0 2px; }
+
+  /* ── LIQUIDATIONS: list body ─────────────────────────────────── */
+  /* position:relative anchors the detail panel when it becomes an overlay on
+     narrow viewports (see the media query below). */
+  .liq-body      { display:flex; flex:1; overflow:hidden; min-height:0; position:relative; }
+  .liq-list-wrap { flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0; }
+  .liq-thead     { flex-shrink:0; border-bottom:1px solid var(--border); background:var(--panel-hd); }
+  #liq-list      { flex:1; overflow-y:auto; overflow-x:auto; }
+  #liq-footer    { flex-shrink:0; padding:4px 12px; font-size:12px; color:var(--muted);
+                   border-top:1px solid var(--border2); }
+
+  /* grid: outcome | block | time | feed | liq$ | ≈profit | ours/tot | winner | contested */
+  .liq-tr { display:grid; padding:2px 12px; align-items:center; white-space:nowrap;
+            grid-template-columns:54px 82px 52px 38px 88px 90px 112px 78px 96px; gap:0 6px; }
+  /* Each cell clips instead of bleeding into its neighbour (min-width:0 lets a
+     grid item shrink below content; a long winner cluster / wide ours$/tot$ gets
+     an ellipsis rather than overlapping the next column). */
+  .liq-tr > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+  .liq-tr.hdr { font-size:11px; color:#b8c2ce; padding:3px 12px; min-height:22px; }
+  .liq-tr.row { border-bottom:1px solid var(--border2); cursor:pointer; min-height:23px; }
+  .liq-tr.row:hover { background:var(--col); }
+  .liq-tr.row.sel  { background:var(--col); outline:1px solid var(--accent); outline-offset:-1px; }
+  .liq-tr.row.big  { font-weight:bold; }
+  .liq-tr.row.huge { font-weight:bold; color:var(--y); }
+  .liq-cr { text-align:right; font-variant-numeric:tabular-nums; }
+
+  /* day-group sticky header */
+  .liq-day { display:flex; gap:10px; flex-wrap:wrap; padding:3px 12px; font-size:11px;
+             color:var(--muted); background:var(--panel-hd);
+             border-bottom:1px solid var(--border2); position:sticky; top:0; z-index:2; }
+  .liq-day .lhd    { color:var(--fg); font-weight:bold; font-size:12px; }
+  .liq-empty       { padding:20px 12px; color:var(--muted); font-size:12px; }
+  .liq-loading-row { padding:6px 12px; color:var(--muted); font-size:12px; }
+
+  /* ── LIQUIDATIONS: docked detail panel ───────────────────────── */
+  /* display is set by JS (flex or none); CSS handles the rest */
+  /* Wide docked panel — the flooding-block-stats table has many columns; taking
+     two-thirds of the page (the list keeps the remaining third via flex:1) shows
+     far more of them before the table's own horizontal scroll (liq-wt-wrap) kicks
+     in. A percentage basis scales with the viewport, so no per-width override is
+     needed above the overlay breakpoint below. */
+  .liq-dp { width:66.6667%; flex-shrink:0; flex-direction:column;
+            border-left:1px solid var(--border); background:var(--panel); overflow:hidden; }
+  .liq-dp-hd { flex-shrink:0; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+               padding:5px 10px; background:var(--panel-hd);
+               border-bottom:1px solid var(--border); font-size:12px; }
+  .liq-dp-blk { color:var(--accent); font-weight:bold; font-size:13px; }
+  .liq-dp-close { margin-left:auto; cursor:pointer; color:var(--muted); flex-shrink:0;
+                  padding:1px 7px; border:1px solid var(--border); border-radius:4px;
+                  background:none; font:12px ui-monospace,Menlo,Consolas,monospace; }
+  .liq-dp-close:hover { color:var(--fg); }
+  /* Flex column: the top sections scroll in .liq-dp-top; once the flooding-block
+     -stats table is loaded, #liq-fs grows to fill the rest of the panel and scrolls
+     internally, so its horizontal scrollbar is pinned at the PANEL bottom (always
+     visible) instead of the bottom of a very tall table. When #liq-fs is empty
+     (before the button is clicked) .liq-dp-top fills the whole body as before. */
+  .liq-dp-body { flex:1; display:flex; flex-direction:column; overflow:hidden;
+                 padding:8px 10px; font-size:12px; line-height:1.65; }
+  .liq-dp-top { flex:1 1 auto; overflow-y:auto; min-height:0; }
+  /* Once the session table is loaded, size the top sections to their content
+     (capped, scrolls if taller) so the table gets the bulk of the panel height.
+     :has() is Chrome-supported; without it the layout still works (the table
+     still fills to the panel bottom), the top just keeps its empty tail. */
+  .liq-dp-top:has(+ #liq-fs:not(:empty)) { flex:0 1 auto; max-height:55%; }
+  .liq-dp-sh { font-size:11px; color:var(--muted); font-weight:bold; text-transform:uppercase;
+               letter-spacing:.05em; margin:8px 0 3px;
+               border-top:1px solid var(--border2); padding-top:6px; }
+  .liq-dp-sh.first { border-top:none; padding-top:0; margin-top:0; }
+  .liq-wt-wrap { overflow-x:auto; }
+  .liq-wt { border-collapse:collapse; width:100%; font-size:11px; min-width:340px; }
+  .liq-wt th { color:#b8c2ce; text-align:left; padding:0 5px; height:20px; font-weight:normal;
+               border-bottom:1px solid var(--border2); white-space:nowrap; }
+  .liq-wt td { padding:0 5px; height:20px; border-bottom:1px solid var(--border2);
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:140px; }
+  .liq-wt .nr { text-align:right; font-variant-numeric:tabular-nums; }
+  /* Numeric cells (base/tip/gas) must never clip — show the full no-rounding gwei;
+     the table scrolls horizontally (liq-wt-wrap overflow-x:auto) if it overflows. */
+  .liq-wt td.nr { max-width:none; overflow:visible; text-overflow:clip; }
+  .liq-wt td.ftg { padding-top:5px; color:var(--fg); border-bottom:1px solid var(--border); }
+
+  /* ── flooding block stats (lazy on-chain session) ─────────────── */
+  .liq-fs-btn { font:inherit; font-size:11px; cursor:pointer; color:var(--accent);
+    background:transparent; border:1px solid var(--border); border-radius:4px;
+    padding:3px 8px; margin:2px 0 4px; }
+  .liq-fs-btn:hover:not(:disabled) { border-color:var(--accent); }
+  .liq-fs-btn:disabled { opacity:.6; cursor:default; }
+  .liq-fs-hd { font-size:11px; color:var(--fg); margin:2px 0 4px; }
+  /* width:auto + min-width:100% lets nowrap cells grow the table (the wrap
+     scrolls) instead of clipping/overflowing into the neighbouring cell. */
+  .liq-fs-tbl { width:auto; min-width:100%; }
+  /* The session table can be 100+ rows: #liq-fs grows to fill the panel below the
+     top sections and the table scrolls BOTH axes inside it, so the horizontal
+     scrollbar sits at the panel's bottom edge (always in view) — you no longer
+     scroll the whole panel to the very bottom to reach it. When empty (pre-click)
+     these rules don't apply and .liq-dp-top fills the body normally. */
+  .liq-fs-wrap { overflow:auto; }
+  #liq-fs:not(:empty) { flex:1 1 auto; min-height:200px; display:flex;
+    flex-direction:column; overflow:hidden; }
+  #liq-fs:not(:empty) .liq-fs-wrap { flex:1 1 auto; min-height:0; max-height:none; }
+  /* Column headers stay visible while scrolling rows within the box. */
+  .liq-fs-tbl thead th { position:sticky; top:0; z-index:1;
+    background:var(--panel-hd); }
+  .liq-fs-tbl tr.liq-fs-oracle td { background:rgba(120,160,255,.10); }
+  .liq-fs-tbl td { max-width:none; overflow:hidden; text-overflow:clip; }
+  .liq-fs-tbl td.liq-fs-blk { white-space:nowrap; }
+  /* by-target cell: the (target,n,off) groups render 2 per line (each line is a
+     nowrap block so a pair never splits), stacking to more lines when needed —
+     keeps the column narrow so txs/full/tips stay visible without a scrollbar. */
+  .liq-fs-tbl td.liq-fs-land { font-variant-numeric:tabular-nums; white-space:normal;
+    color:var(--fg); padding-right:12px; vertical-align:top; line-height:1.35; }
+  .liq-fs-tbl td.liq-fs-land .fsln { display:block; white-space:nowrap; }
+  .liq-fs-tbl td.liq-fs-tips { white-space:nowrap; font-variant-numeric:tabular-nums; }
+  /* W8 tip-window expansion: the tips cell toggles 5 stacked W8@-2..-6 rows below. */
+  .liq-fs-tbl td.w8-toggle { cursor:pointer; }
+  .liq-fs-tbl td.w8-toggle:hover { color:#e6ecf2; }
+  .liq-fs-tbl .w8-caret { color:var(--accent); font-size:9px; margin-left:3px; }
+  .liq-fs-tbl tr.w8-detail > td { padding:2px 6px 7px; background:rgba(120,160,255,.05);
+    border-bottom:1px solid var(--border2); }
+  .w8-wrap { padding-left:52px; }
+  .w8-mini { display:inline-block; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  .w8-mini td { padding:1px 9px; text-align:right; color:#cdd5df; white-space:nowrap; }
+  .w8-mini thead td { color:#b8c2ce; font-size:10px; }
+  .w8-mini td.w8-lbl { text-align:left; color:var(--accent); padding-right:14px; }
+  /* readability: --muted was brightened globally (#cdd5df) so dim/muted text is
+     legible everywhere — no per-section override needed. */
+
+  /* ── LIQUIDATIONS: responsive detail panel ───────────────────── */
+  /* The 66.6667% (two-thirds) base width scales with the viewport, so no
+     intermediate fixed-px shrink step is needed — the panel stays two-thirds of
+     the page down to the overlay breakpoint below. */
+  /* Narrow viewport: the panel becomes a full-width overlay over the list so the
+     list is never squeezed to a horizontal-scroll sliver. JS still toggles
+     display flex/none; when shown it covers the body. */
+  @media (max-width:760px) {
+    .liq-dp { position:absolute; inset:0; width:auto; z-index:10;
+              border-left:none; box-shadow:0 0 0 100vmax rgba(0,0,0,.35); }
+  }
+
+  #demoBadge { position:fixed;top:7px;right:14px;z-index:20;color:#facc15;background:#211c0d;border:1px solid #5a4a14;border-radius:4px;padding:2px 8px;font:12px ui-monospace,monospace; }
+  #cols :disabled { cursor:not-allowed;opacity:.65; }
+</style>
+</head>
+<body>
+<header id="bar"><b>liq-dashboard</b></header>
+<span id="demoBadge" title="All data and addresses are synthetic; operational controls are disabled">MOCK DATA / READ ONLY</span>
+<div id="app">
+  <nav id="tab-bar">
+    <button id="tab-live" class="tab-btn active" onclick="showTab('live')">LIVE</button>
+    <button id="tab-liq"  class="tab-btn"        onclick="showTab('liq')">LIQUIDATIONS</button>
+  </nav>
+  <div id="live-view">
+    <div class="col-grid" id="cols"></div>
+    <div class="wide">
+      <div class="panel">
+        <div class="panel-hd"><span class="pt">TOTALS</span><span class="pmeta">cumulative since dashboard start</span></div>
+        <div class="panel-bd bd-totals" id="totals"></div>
       </div>
-      <div class="toolbar">
-        <div class="filters">
-          <label
-            >Market<select id="market">
-              <option value="">All markets</option>
-              <option value="ETH">WETH / USDC</option>
-              <option value="BTC">cbBTC / USDC</option>
-              <option value="CBETH">cbETH / USDC</option>
-            </select></label
-          >
-          <label
-            >Order<select id="sort">
-              <option value="newest">Newest block</option>
-              <option value="largest">Largest debt repaid</option>
-            </select></label
-          >
-        </div>
-        <span id="period" class="period"></span>
-      </div>
-      <p id="notice" class="notice">
-        The bundled dataset is synthetic. It demonstrates the interface; it does
-        not report trading results.
-      </p>
-      <div class="workspace">
-        <section class="ledger" aria-label="Liquidation records">
-          <div class="section-heading">
-            <h2>Block records</h2>
-            <span id="count" aria-live="polite"></span>
-          </div>
-          <div class="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Block / UTC</th>
-                  <th scope="col">Market</th>
-                  <th scope="col" class="number">Positions</th>
-                  <th scope="col" class="number">Debt repaid / USDC</th>
-                </tr>
-              </thead>
-              <tbody id="rows"></tbody>
-            </table>
-          </div>
-          <p id="status" role="status" class="status">Loading activity…</p>
-          <div class="pagination">
-            <button id="reset" type="button">Back to first page</button
-            ><button id="more" type="button" disabled>Load more</button>
-          </div>
-        </section>
-        <aside
-          id="detail"
-          class="detail"
-          aria-label="Selected block details"
-          aria-live="polite"
-        >
-          <p>Select a block to inspect its liquidations.</p>
-        </aside>
-      </div>
-      <footer>
-        Read-only activity explorer · Amounts are debt repaid, not profit ·
-        Built by Adam Du
-      </footer>
-    </main>
-  </body>
+    </div>
+  </div>
+  <div id="liq-view" style="display:none"></div>
+</div>
+<script>
+// ── helpers ────────────────────────────────────────────────────────────────────
+function usd(n) {
+  n = n || 0;
+  if (Math.abs(n) >= 1000) return '$' + Math.round(n).toLocaleString();
+  return '$' + n.toFixed(2);
+}
+// fmtMoney is a byte-for-byte port of liq-monitor's fmtMoney (the terminal monitor):
+// the integer part with thousands separators, then `decimals` fractional digits
+// TRUNCATED one at a time from the float64 (NOT rounded), so the candidate /
+// near-liq tables render IDENTICALLY to the TUI for the same value. JS numbers
+// are float64, so replaying the same arithmetic reproduces Go exactly — e.g.
+// 59093.88 (stored 59093.8799…) yields "59,093.87" in both, whereas a
+// floor(n*100)/100 approach rounds n*100 back up and prints "59,093.88".
+function fmtMoney(v, decimals) {
+  const neg = v < 0;
+  if (neg) v = -v;
+  const intPart = Math.trunc(v);   // int64(v)
+  let frac = v - intPart;          // v - float64(intPart)
+  const ds = intPart.toString();
+  let out = '';
+  for (let i = 0; i < ds.length; i++) {
+    if (i > 0 && (ds.length - i) % 3 === 0) out += ',';
+    out += ds[i];
+  }
+  if (decimals > 0) {
+    out += '.';
+    for (let i = 0; i < decimals; i++) {
+      frac *= 10;
+      let d = Math.trunc(frac);    // int(frac); frac >= 0 here
+      if (d > 9) d = 9;
+      out += d;
+      frac -= d;                   // frac -= float64(d)
+    }
+  }
+  return (neg ? '-' : '') + out;
+}
+function usdInt(n) { return '$' + fmtMoney(n || 0, 0); } // whole dollars (TUI fmtMoney(_,0))
+function usd2(n)   { return '$' + fmtMoney(n || 0, 2); } // 2 decimals  (TUI fmtMoney(_,2))
+// usdPx: an oracle or trigger price. Below $10 (cbXRP ~$1.3) 2 decimals hide a whole 0.5% oracle step, so show 4.
+function usdPx(n)  { n = n || 0; return '$' + fmtMoney(n, Math.abs(n) < 10 ? 4 : 2); }
+function shortAddr(a) {
+  if (!a || a.length < 14) return a || '';
+  return a.slice(0, 8) + '…' + a.slice(-6);
+}
+function ageClass(ms) {
+  if (ms < 5000) return 'age-g';
+  if (ms < 30000) return 'age-y';
+  return 'age-r';
+}
+// On-chain oracle price age coloring. Both Base feeds heartbeat at 1200s
+// (oracle-predictor heartbeat_seconds), so a healthy feed updates at least every
+// ~20 min: green within one heartbeat, yellow once overdue, red after two
+// heartbeats (a stalled feed or a broken node read).
+const oracleHeartbeatSec = 1200;
+function oracleAgeClass(sec) {
+  if (sec < oracleHeartbeatSec) return 'age-g';
+  if (sec < 2 * oracleHeartbeatSec) return 'age-y';
+  return 'age-r';
+}
+function span(cls, txt) { return '<span class="' + cls + '">' + esc(txt) + '</span>'; }
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmtTime(sec) {
+  const d = new Date(sec * 1000);
+  return d.getUTCHours().toString().padStart(2,'0') + ':' +
+         d.getUTCMinutes().toString().padStart(2,'0') + ':' +
+         d.getUTCSeconds().toString().padStart(2,'0');
+}
+function fmtDelta(sec) {
+  const dt = sec - Math.floor(Date.now() / 1000);
+  if (dt === 0) return 'now';
+  return (dt > 0 ? '+' : '') + dt + 's';
+}
+function fmtAgo(unixSec) {
+  const d = Math.max(0, Math.floor(Date.now() / 1000) - (unixSec || 0));
+  if (d < 60) return d + 's';
+  if (d < 3600) return Math.floor(d/60) + 'm' + (d%60) + 's';
+  return Math.floor(d/3600) + 'h' + Math.floor((d%3600)/60) + 'm';
+}
+function compactNum(n) {
+  if (n === undefined || n === null) return '0';
+  if (Math.abs(n) >= 1e6) return (n/1e6).toFixed(2) + 'M';
+  if (Math.abs(n) >= 1e3) return Math.round(n).toLocaleString();
+  return n.toFixed ? n.toFixed(4).replace(/\.?0+$/, '') : String(n);
+}
+function panel(cls, titleHtml, metaHtml, bodyHtml) {
+  return '<div class="panel">' +
+    '<div class="panel-hd"><span class="pt">' + titleHtml + '</span>' +
+      (metaHtml ? '<span class="pmeta">' + metaHtml + '</span>' : '') + '</div>' +
+    '<div class="panel-bd ' + cls + '">' + bodyHtml + '</div></div>';
+}
+
+// ── POST breaker toggle ────────────────────────────────────────────────────────
+// pendingArmed[feed] holds the operator's just-toggled intent until a snapshot
+// confirms the server caught up. While an entry is present, render() shows IT for
+// the checkbox + FLOOD ECON tag, so a snapshot that was already in flight BEFORE
+// the toggle landed can't bounce the control back to its old state.
+const pendingArmed = {};
+
+async function setArmed(feed, armed, el) {
+  // The breaker arm/disarm is a LIVE safety toggle — surface the result instead
+  // of silently swallowing it. On failure, revert the optimistic checkbox so the
+  // UI never claims a state the server didn't accept.
+  pendingArmed[feed] = armed; // sticky intent — survives interim 2s re-renders
+  try {
+    const r = await fetch('/api/breaker', {method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({feed, armed})});
+    if (!r.ok) {
+      delete pendingArmed[feed];
+      if (el) el.checked = !armed;
+      toast(feed + ' breaker toggle FAILED: ' + (await r.text()).slice(0, 100), 'r');
+      return;
+    }
+    toast(feed + (armed ? ' breaker ARMED — auto-kill on' : ' breaker DISARMED — auto-kill OFF'), armed ? 'g' : 'y');
+    refresh();
+  } catch (e) {
+    delete pendingArmed[feed];
+    if (el) el.checked = !armed;
+    toast(feed + ' breaker toggle error: ' + e.message, 'r');
+  }
+}
+
+// ── POST "clean stats" reset ────────────────────────────────────────────────
+// Re-zeroes this feed's cumulative TOTALS and re-anchors the FLOOD ECON
+// cost/profit baseline to NOW (and re-arms the $-cost breaker budget). This is
+// the ONLY thing that re-anchors FLOOD ECON: dashboard and liquidator restarts
+// do not. It mutates only dashboard-side accounting — it does NOT touch the
+// liquidator, so flooding/registration stay exactly as armed. Behind a confirm
+// because the cost-budget re-arm is safety-relevant.
+async function resetStats(feed) {
+  const econ = (lastSnapshot && lastSnapshot.feeds[feed] && lastSnapshot.feeds[feed].econ) || {};
+  const trip = Math.round(econ.cost_trip_usd || 1000);
+  if (!confirm('Reset ' + feed + ' stats?\n\n' +
+      '• TOTALS (liqs / profit / floods …) → cleared\n' +
+      '• FLOOD ECON cost / profit → re-counted from now\n\n' +
+      'This also RE-ARMS the $' + trip + ' flood-cost auto-kill budget for ' + feed +
+      ' (spend so far is forgotten). Flooding and registration are NOT changed.')) return;
+  try {
+    const r = await fetch('/api/reset', {method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({feed})});
+    if (!r.ok) { toast(feed + ' reset FAILED: ' + (await r.text()).slice(0, 100), 'r'); return; }
+    toast(feed + ' stats reset — counting clean from now', 'g');
+    refresh();
+  } catch (e) {
+    toast(feed + ' reset error: ' + e.message, 'r');
+  }
+}
+
+// ── POST service restart ────────────────────────────────────────────────────
+// A restart is recovery only: systemd re-execs the release selected by the
+// server's current pointer and the liquidator boots from its dry YAML posture.
+// The backend serializes this against every other dashboard mutation; this
+// client-side flag keeps both feed buttons visibly disabled across 2s renders.
+let restartPending = '';
+
+async function restartService(feed) {
+  if (restartPending) return;
+  if (!confirm('Restart ' + feed + ' liquidator service?\n\n' +
+      '• Stops and starts the systemd service\n' +
+      '• Uses the currently deployed release\n' +
+      '• Restores runtime switches to the boot-dry configuration\n\n' +
+      'This is a recovery action. It does not deploy a release or make the feed live.')) return;
+  restartPending = feed;
+  toast(feed + ' service restart in progress — waiting for a healthy replacement process…', 'y');
+  if (lastSnapshot) render(lastSnapshot);
+  try {
+    const r = await fetch('/api/restart', {method:'POST', headers:{'content-type':'application/json'},
+      body:JSON.stringify({feed})});
+    const raw = await r.text();
+    let body = {};
+    try { body = raw ? JSON.parse(raw) : {}; } catch (_) {}
+    if (!r.ok && r.status !== 202) {
+      const msg = body.error || raw || ('HTTP ' + r.status);
+      toast(feed + ' service restart FAILED or outcome unknown: ' + String(msg).slice(0, 180), 'r');
+      return;
+    }
+    if (r.status === 202 || body.warming) {
+      toast(feed + ' service restarted (PID ' + (body.pid || '?') + '); candidate state still warming', 'y');
+    } else {
+      toast(feed + ' service restarted and ready (PID ' + (body.pid || '?') + ')', 'g');
+    }
+    refresh();
+  } catch (e) {
+    // A transport loss can happen after systemd accepted the restart. Never
+    // claim it failed; direct the operator to the live status indicators.
+    toast(feed + ' restart outcome unknown: ' + e.message + ' — check connection and candidate state', 'r');
+  } finally {
+    restartPending = '';
+    if (lastSnapshot) render(lastSnapshot);
+  }
+}
+
+// toast shows a transient page-level notice (bottom-right). It lives under #app,
+// OUTSIDE the #cols/#totals/#bar regions that render() rewrites every 2s, so it
+// survives the column re-render that destroys the control that triggered it.
+let toastTimer = null;
+function toast(text, cls) {
+  let t = document.getElementById('toast');
+  if (!t) { t = document.createElement('div'); t.id = 'toast'; document.getElementById('app').appendChild(t); }
+  t.textContent = text;
+  t.className = 'toast ' + (cls || '');
+  t.style.display = 'block';
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.style.display = 'none'; }, 5000);
+}
+
+// ── Runtime config editor ───────────────────────────────────────────────────────
+// The latest snapshot, kept so the editor reads the feed's CURRENT runtime values.
+let lastSnapshot = null;
+
+// RT_FIELDS describes the runtime-mutable knobs editable via POST /v1/runtime
+// (mirrors runtimecfg.Patch). sec/k are the patch path; rt is the snapshot key;
+// t is the input type. usd fields show whole dollars but patch in 6-dp base units;
+// enum is a <select> (opts) patched as the chosen string; frac is a raw fraction
+// (e.g. dev_gate 0.0013) patched verbatim.
+const RT_FIELDS = [
+  {sec:'flooding',      k:'dry_run',                       rt:'flooding_dry',                          t:'bool', label:'flood dry_run'},
+  {sec:'candidate_reg', k:'dry_run',                       rt:'candidate_reg_dry',                     t:'bool', label:'reg dry_run'},
+  {sec:'flooding',      k:'strategy',                      rt:'flooding_strategy',                     t:'enum', label:'strategy', opts:['obs_price','sample_step','manual']},
+  {sec:'flooding',      k:'max_block_cap',                 rt:'flooding_max_block_cap',                t:'int',  label:'max_block_cap'},
+  {sec:'flooding',      k:'flood_liquidatable_widening_pct', rt:'flooding_liquidatable_widening_pct',   t:'frac', label:'flood widening (frac, 0=off)'},
+  {sec:'flooding',      k:'max_total_n',                   rt:'flooding_max_total_n',                  t:'int',  label:'max_total_n'},
+  {sec:'flooding',      k:'size_cap_threshold_usdc',       rt:'flooding_size_cap_threshold_usdc',      t:'usd',  label:'size_cap_threshold ($)'},
+  {sec:'candidate_reg', k:'min_borrow_usdc',               rt:'candidate_reg_min_borrow_usdc',         t:'usd',  label:'reg min_borrow ($)'},
+  {sec:'candidate_reg', k:'register_margin_pct',           rt:'candidate_reg_register_margin_pct',      t:'pct',  label:'entry margin R (%)'},
+  {sec:'candidate_reg', k:'activation_exit_buffer_pct',    rt:'candidate_reg_activation_exit_buffer_pct', t:'pct', label:'exit buffer E (%)'},
+  // obs-price (continuous-flood) knobs — active when strategy=obs_price.
+  {sec:'flooding',      k:'continuous_flood_base_rate',       rt:'flooding_continuous_flood_base_rate',       t:'int',  label:'cont base_rate'},
+  {sec:'flooding',      k:'continuous_flood_dev_gate_pct',    rt:'flooding_continuous_flood_dev_gate_pct',    t:'frac', label:'cont dev_gate (frac, 0=off)'},
+  // sample-step allocation knobs — active when strategy=sample_step.
+  {sec:'flooding',      k:'sample_step_normal_depth',      rt:'flooding_sample_step_normal_depth',      t:'int', label:'ss normal_depth'},
+  {sec:'flooding',      k:'sample_step_arrival_shape',     rt:'flooding_sample_step_arrival_shape',     t:'shape', label:'ss arrival shape'},
+  {sec:'flooding',      k:'sample_step_arrival_drift_shape', rt:'flooding_sample_step_arrival_drift_shape', t:'shape', label:'ss arrival drift shape', allowZero:true},
+  {sec:'flooding',      k:'sample_step_heartbeat_depth',   rt:'flooding_sample_step_heartbeat_depth',   t:'int', label:'ss heartbeat_depth'},
+  {sec:'flooding',      k:'sample_step_bump_depth',        rt:'flooding_sample_step_bump_depth',        t:'int', label:'ss bump_depth (constant)'},
+  {sec:'flooding',      k:'sample_step_eld_bump_onset',    rt:'flooding_sample_step_eld_bump_onset',    t:'int', label:'ss bump onset (eld)'},
+  {sec:'flooding',      k:'sample_step_ext_hi_sec',        rt:'flooding_sample_step_ext_hi_sec',        t:'int', label:'ss ext_hi_sec'},
+  // sample-step flood cost-cap knobs — active when the cap is enabled at boot (strategy=sample_step).
+  // The cost-cap knobs size the $-budget (min(cap_absolute, reward·profit_rate·frac_base) priced at our_gas);
+  // policy picks the distribution shape. enabled stays boot-only (not editable).
+  {sec:'flooding',      k:'sample_step_cost_cap_absolute_usd',      rt:'flooding_sample_step_cost_cap_absolute_usd',      t:'int',  label:'cc base budget cap ($/round)'},
+  {sec:'flooding',      k:'sample_step_cost_cap_profit_rate',       rt:'flooding_sample_step_cost_cap_profit_rate',       t:'frac', label:'cc profit_rate (frac)'},
+  {sec:'flooding',      k:'sample_step_cost_cap_frac_base',         rt:'flooding_sample_step_cost_cap_frac_base',         t:'frac', label:'cc frac_base (frac)'},
+  {sec:'flooding',      k:'sample_step_cost_cap_our_gas',           rt:'flooding_sample_step_cost_cap_our_gas',           t:'int',  label:'cc our_gas'},
+  {sec:'flooding',      k:'sample_step_cost_cap_min_floor',         rt:'flooding_sample_step_cost_cap_min_floor',         t:'int',  label:'cc min_floor (depth_prop path)'},
+  {sec:'flooding',      k:'sample_step_cost_cap_landing_floor_txs', rt:'flooding_sample_step_cost_cap_landing_floor_txs', t:'int',  label:'cc landing floor (per-landing-block reserve)'},
+  {sec:'flooding',      k:'sample_step_cost_cap_policy',            rt:'flooding_sample_step_cost_cap_policy',            t:'enum', label:'cc policy', opts:['depth_prop','landing_reservation','probability_weighted','tiered_decay'], dflt:'depth_prop'},
+  {sec:'flooding',      k:'sample_step_cost_cap_deltastage_cap_usd', rt:'flooding_sample_step_cost_cap_deltastage_cap_usd', t:'int',  label:'ds cc cap ($/target)'},
+  {sec:'flooding',      k:'sample_step_cost_cap_deltastage_frac',    rt:'flooding_sample_step_cost_cap_deltastage_frac',    t:'frac', label:'ds cc profit fraction'},
+  {sec:'flooding',      k:'debug_per_tx_send',                       rt:'flooding_debug_per_tx_send',                       t:'bool', label:'debug each successful send'},
+  // manual knobs — active when strategy=manual.
+  {sec:'flooding',      k:'manual_enabled',                rt:'flooding_manual_enabled',               t:'bool', label:'manual enabled'},
+  {sec:'flooding',      k:'manual_txs_per_block',          rt:'flooding_manual_txs_per_block',         t:'int',  label:'manual txs_per_block'},
+  {sec:'flooding',      k:'test_force_dispatch_on_active',  rt:'flooding_test_force_dispatch_on_active', t:'bool', label:'TEST force-dispatch'},
+  // C3 RFQ refresh knobs (BTC-only feature; patch section 'rfq'). near_liq_margin is a
+  // FRACTION in the snapshot (pct type → shown/edited as %); max_quotes/sec is a float (frac).
+  {sec:'rfq',           k:'enabled',                       rt:'rfq_enabled',                           t:'bool', label:'rfq enabled'},
+  {sec:'rfq',           k:'near_liq_margin_pct',           rt:'rfq_near_liq_margin_pct',               t:'pct',  label:'rfq near_liq_margin (%)'},
+  {sec:'rfq',           k:'refresh_interval_sec',          rt:'rfq_refresh_interval_sec',              t:'int',  label:'rfq refresh_interval (s)'},
+  {sec:'rfq',           k:'max_quotes_per_sec',            rt:'rfq_max_quotes_per_sec',                t:'frac', label:'rfq max_quotes/sec'},
+];
+
+// pendingRT[feed] holds optimistic field intents (snapshot-unit values keyed by the
+// snapshot rt key) so an in-flight 2s poll can't bounce a control the operator just
+// changed — the breaker-toggle reconcile, generalized to every runtime field.
+const pendingRT = {};
+// advancedOpen[feed] — whether the collapsible Advanced section is expanded.
+const advancedOpen = {};
+// rtByKey maps a snapshot rt key → its RT_FIELDS descriptor (sec/k/t/opts).
+const rtByKey = {};
+for (const f of RT_FIELDS) rtByKey[f.rt] = f;
+
+function normStrat(v) { return v || 'sample_step'; } // strategy is required; GET always sends a real value
+// stratDisp: the human label for a strategy value (obs_price→continuous,
+// sample_step→sample-step; others verbatim). Used in toasts + the panel meta.
+function stratDisp(s) { return s === 'obs_price' ? 'continuous' : (s === 'sample_step' ? 'sample-step' : s); }
+
+// rtEq: are two snapshot-unit values for a field equal? (lets a satisfied pending
+// override clear once the snapshot reports the intended value).
+function rtEq(fld, a, b) {
+  if (!fld) return a === b;
+  if (fld.t === 'bool') return !!a === !!b;
+  if (fld.t === 'shape') {
+    return Array.isArray(a) && Array.isArray(b) && a.length === 3 && b.length === 3 &&
+      a.every((v, i) => v === b[i]);
+  }
+  // enum: compare with the field's default filling a falsy value (strategy → 'sample_step'
+  // via its unset default; policy → 'depth_prop'), so an at-default snapshot matches the
+  // explicit default option.
+  if (fld.t === 'enum') { const d = v => v || fld.dflt || 'sample_step'; return d(a) === d(b); }
+  return Math.abs((a || 0) - (b || 0)) < 1e-9;
+}
+
+// rtEffective: the value to DISPLAY for a field — the operator's pending intent until
+// the snapshot catches up, else the snapshot value. Clears a satisfied pending.
+function rtEffective(feed, rt, rtKey) {
+  const p = pendingRT[feed];
+  if (p && rtKey in p) {
+    if (rtEq(rtByKey[rtKey], rt[rtKey], p[rtKey])) delete p[rtKey];
+    else return p[rtKey];
+  }
+  return rt[rtKey];
+}
+
+// fieldInputVal: the <input> value for a field from a snapshot-unit value
+// (usd → whole dollars, pct → percent, frac/int verbatim).
+function fieldInputVal(fld, cur) {
+  if (fld.t === 'usd') return Math.round((cur || 0) / 1e6);
+  if (fld.t === 'pct') return parseFloat(((cur || 0) * 100).toFixed(4));
+  return (cur || 0); // frac, int
+}
+
+// fieldParse: read an <input>/<select>, return {ok, patchVal, disp} in snapshot units
+// or {ok:false, err}. Mirrors the old per-field parse + unit conversion.
+function fieldParse(fld, el) {
+  if (fld.t === 'bool') return {ok:true, patchVal: el.checked, disp: String(el.checked)};
+  if (fld.t === 'enum') return {ok:true, patchVal: el.value, disp: el.value};
+  if (fld.t === 'pct') {
+    const nv = parseFloat(el.value);
+    if (!Number.isFinite(nv) || nv < 0 || nv > 100) return {ok:false, err: fld.label + ': enter a percent 0-100'};
+    return {ok:true, patchVal: nv / 100, disp: nv.toFixed(2) + '%'};
+  }
+  if (fld.t === 'frac') {
+    const nv = parseFloat(el.value);
+    if (!Number.isFinite(nv) || nv < 0) return {ok:false, err: fld.label + ': enter a non-negative fraction'};
+    return {ok:true, patchVal: nv, disp: String(nv)};
+  }
+  const nv = parseInt(el.value, 10); // int, usd
+  if (!Number.isFinite(nv) || nv < 0) return {ok:false, err: fld.label + ': invalid number'};
+  if (fld.t === 'usd') return {ok:true, patchVal: nv * 1000000, disp: '$' + nv.toLocaleString()};
+  return {ok:true, patchVal: nv, disp: String(nv)};
+}
+
+function rerenderCols() { if (lastSnapshot) render(lastSnapshot); }
+
+// postRuntime: send a patch to a feed's /v1/runtime (via the dashboard proxy),
+// optimistically setting pendingRT[feed] = pend (rtKey→snapshot-unit value) and
+// toasting the result. Rolls the pending keys back on any failure.
+async function postRuntime(feed, patch, pend, okMsg, okCls) {
+  const p = (pendingRT[feed] = pendingRT[feed] || {});
+  Object.assign(p, pend);
+  setTimeout(rerenderCols, 0); // reflect the intent once the current event settles
+  try {
+    const r = await fetch('/api/runtime', {method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({feed, patch})});
+    const txt = await r.text();
+    if (!r.ok) {
+      for (const k in pend) delete p[k];
+      let reason = txt.slice(0, 160);
+      try { const j = JSON.parse(txt); if (j && j.error) reason = j.error; } catch (_) {}
+      // 502 = the proxy never got an answer. The liquidator applies the patch
+      // BEFORE it responds (a flooding dry->live flip builds the TLS pool
+      // inline), so the flip may well have landed — calling that "rejected"
+      // is a lie that makes the operator re-toggle and churn the pool. Say
+      // it's unknown and re-read the real state instead.
+      if (r.status === 502) {
+        toast(feed + ' — no response from liquidator; the change MAY have applied. '
+              + 'Re-reading live state… (' + reason + ')', 'y');
+        refresh();
+        return false;
+      }
+      toast(feed + ' rejected: ' + reason, 'r');
+      setTimeout(rerenderCols, 0);
+      return false;
+    }
+    toast(okMsg, okCls || 'g');
+    refresh();
+    return true;
+  } catch (e) {
+    for (const k in pend) delete p[k];
+    toast(feed + ' error: ' + e.message, 'r');
+    setTimeout(rerenderCols, 0);
+    return false;
+  }
+}
+
+// ── Inline control handlers (all instant, with a toast) ─────────────────────────
+// Strategy switch (radio) — the time-critical action.
+function setStrategy(feed, strat) {
+  const rt = lastSnapshot.feeds[feed].runtime;
+  if (normStrat(rtEffective(feed, rt, 'flooding_strategy')) === strat) return; // already active
+  postRuntime(feed, {flooding:{strategy: strat}}, {flooding_strategy: strat},
+    feed + ' strategy → ' + stratDisp(strat), strat === 'manual' ? 'y' : 'g');
+}
+
+// One-click manual start (select manual + enable) / stop (disable only — strategy
+// stays 'manual', idle). Per orchestrator.handleManual: floods iff strategy==manual
+// AND manual_enabled AND a candidate is liquidatable.
+function startManual(feed) {
+  postRuntime(feed, {flooding:{strategy:'manual', manual_enabled:true}},
+    {flooding_strategy:'manual', flooding_manual_enabled:true}, feed + ' manual flooding STARTED', 'y');
+}
+function stopManual(feed) {
+  postRuntime(feed, {flooding:{manual_enabled:false}}, {flooding_manual_enabled:false},
+    feed + ' manual flooding STOPPED', 'g');
+}
+
+// Live/dry toggle. dry_run=false ARMS the live action (sends real txs) → red toast.
+function setDry(feed, sec, rtKey, dry) {
+  const label = sec === 'flooding' ? 'flood' : 'reg';
+  postRuntime(feed, {[sec]:{dry_run: dry}}, {[rtKey]: dry},
+    feed + ' ' + label + (dry ? ' → DRY (safe)' : ' → LIVE'), dry ? 'g' : 'r');
+}
+
+// Numeric field: commit on Enter/blur (idempotent — no POST when unchanged; on a
+// validation error, toast + revert the input to the effective value).
+function commitField(feed, rtKey, el) {
+  const fld = rtByKey[rtKey];
+  const rt = lastSnapshot.feeds[feed].runtime;
+  const res = fieldParse(fld, el);
+  if (!res.ok) { toast(feed + ' ' + res.err, 'r'); el.value = fieldInputVal(fld, rtEffective(feed, rt, rtKey)); return; }
+  if (rtEq(fld, res.patchVal, rtEffective(feed, rt, rtKey))) return; // unchanged
+  postRuntime(feed, {[fld.sec]:{[fld.k]: res.patchVal}}, {[rtKey]: res.patchVal},
+    feed + ' ' + fld.label + ' → ' + res.disp, 'g');
+}
+
+// Commit all three arrival depths together. The runtime API deliberately has no
+// per-slot patch, so an operator can never leave a partially updated shape.
+function commitShape(feed, rtKey, box) {
+  const fld = rtByKey[rtKey];
+  const vals = Array.from(box.querySelectorAll('input')).map(el => parseInt(el.value, 10));
+  const min = fld.allowZero ? 0 : 1;
+  if (vals.length !== 3 || vals.some(v => !Number.isFinite(v) || v < min)) {
+    toast(feed + ' ' + fld.label + ': enter three ' + (fld.allowZero ? 'non-negative' : 'positive') + ' integers', 'r');
+    rerenderCols();
+    return;
+  }
+  const rt = lastSnapshot.feeds[feed].runtime;
+  if (rtEq(fld, vals, rtEffective(feed, rt, rtKey))) return;
+  postRuntime(feed, {[fld.sec]:{[fld.k]: vals}}, {[rtKey]: vals},
+    feed + ' ' + fld.label + ' → [' + vals.join(', ') + ']', 'g');
+}
+
+// Bool field (e.g. TEST force-dispatch): commit on change.
+function commitBool(feed, rtKey, el) {
+  const fld = rtByKey[rtKey];
+  postRuntime(feed, {[fld.sec]:{[fld.k]: el.checked}}, {[rtKey]: el.checked},
+    feed + ' ' + fld.label + ' → ' + el.checked, el.checked ? 'y' : 'g');
+}
+
+function toggleAdvanced(feed) { advancedOpen[feed] = !advancedOpen[feed]; rerenderCols(); }
+
+// ── Section renderers ──────────────────────────────────────────────────────────
+
+function renderConnBadge(conn) {
+  conn = conn || {};
+  if (conn.ok) return '<span class="ok-badge">[OK]</span>';
+  const lastOk = conn.last_ok_unix || 0;
+  const ago = Math.floor(Date.now() / 1000) - lastOk;
+  const fails = conn.consec_fails > 0 ? ' fails=' + esc(conn.consec_fails) : '';
+  if (lastOk > 0 && ago < 30) {
+    return '<span class="stale-badge">[STALE ' + esc(fmtAgo(lastOk)) + fails + ']</span>';
+  }
+  const agoTxt = lastOk > 0 ? ' last_ok=' + esc(fmtAgo(lastOk)) : ' never';
+  return '<span class="down-badge">[DOWN' + agoTxt + fails + ']</span>';
+}
+
+// Candidate-cache recovery is deliberately advisory: flooding continues from
+// the last coherent generation during its bounded grace. Backend-owned `stuck`
+// and `flood_allowed` distinguish ordinary network recovery from a prolonged
+// condition without duplicating timing policy in JavaScript.
+function renderCandidateState(cs) {
+  cs = cs || {};
+  if (!cs.reason && !cs.generation) return '';
+  const ageSec = Math.max(0, Math.floor((cs.age_ms || 0) / 1000));
+  const gen = cs.generation || 0;
+  const lastCommit = cs.last_commit_unix_ms > 0 ? fmtAgo(Math.floor(cs.last_commit_unix_ms / 1000)) : 'never';
+  const title = 'candidate cache generation ' + gen + '; state=' + (cs.reason || 'unknown') +
+    '; state age=' + ageSec + 's; last complete commit=' + lastCommit +
+    '; last commit duration=' + (cs.last_commit_duration_ms || 0) + 'ms' +
+    '; candidate flooding=' + (cs.flood_allowed ? 'allowed' : 'blocked') +
+    '. Short recovery serves the last coherent generation; a prolonged stuck recovery blocks candidate-backed flooding.';
+  if (!cs.ready) {
+    return '<span class="r" title="' + esc(title) + '">[CAND COLD]</span>';
+  }
+  if (cs.commit_in_progress) {
+    return '<span class="y" title="' + esc(title) + '">[CAND COMMIT g' + esc(gen) + ']</span>';
+  }
+  if (cs.serving_last_coherent) {
+    if (!cs.flood_allowed) {
+      return '<span class="r" title="' + esc(title) + '">[CAND BLOCKED ' + esc(ageSec) + 's g' + esc(gen) + ']</span>';
+    }
+    return '<span class="' + (cs.stuck ? 'r' : 'y') + '" title="' + esc(title) + '">[CAND ' +
+      (cs.stuck ? 'STUCK ' : 'SYNC ') + esc(ageSec) + 's g' + esc(gen) + ']</span>';
+  }
+  return '<span class="g" title="' + esc(title) + '">[CAND READY g' + esc(gen) + ']</span>';
+}
+
+// ONCHAIN ORACLE — the live Chainlink feed read (latestRoundData on the USD
+// proxy), done node-locally: the current on-chain price as the headline, how old
+// that round is, and the aggregator round id (matches the predictor's round).
+// IMPORTANT — this headline is the RAW base feed (ETH/USD or BTC/USD), in USD,
+// NOT the composed price Morpho liquidates on. The MARKET-STATE oracle — the
+// /v1/state composed price() (USDC) that decides liquidatability, what the bot
+// acts on — lives in the header price chips and in the ON-CHAIN REGISTERED
+// panel's "morpho" readout. The two share a basis ONLY for BTC (its market
+// oracle has no quote feed); for ETH the composed price is ETH/USD ÷ USDC/USD,
+// so it sits ~0.027% ABOVE this raw headline BY CONSTRUCTION (the USDC/USD
+// discount) — that gap is EXPECTED, not a writer apply-lag/bug. So do NOT compare
+// this raw headline against the USDC-denominated trigger column; use the
+// "morpho" readout for that. The price hover cross-checks against the composed
+// market-state oracle; the writer-publish age + applied-block cursor stay in the
+// hover titles as secondary liveness detail.
+function renderOnchainOraclePanel(state, oc, pred, rt) {
+  state = state || {}; oc = oc || {}; pred = pred || {}; rt = rt || {};
+  if (!oc.avail && !state.avail) return panel('bd-state', 'ONCHAIN ORACLE', '', '<div class="empty">(unavailable)</div>');
+  const writerAge = ((state.age_ms||0)/1000).toFixed(1) + 's';
+  const stateOracle = usdPx(state.oracle_price_usd);
+
+  // headline = the on-chain latestRoundData answer; fall back to the market-state
+  // oracle (dim, tagged) only while the node read is pending/failed.
+  let priceHtml, priceTitle;
+  if (oc.avail && oc.price_usd > 0) {
+    priceHtml = '<b>' + esc(usdPx(oc.price_usd)) + '</b>';
+    priceTitle = 'current on-chain Chainlink price (latestRoundData answer on the USD proxy). ' +
+      'market-state oracle ' + stateOracle + ' (the /v1/state price Morpho uses for liquidatability — shown in the header).';
+  } else if (state.avail) {
+    priceHtml = '<b class="dim">' + esc(stateOracle) + '</b><span class="dim"> (state)</span>';
+    priceTitle = 'on-chain read pending/failed — showing the market-state oracle (' + stateOracle + ') as a fallback.';
+  } else {
+    priceHtml = '<b class="dim">&mdash;</b>';
+    priceTitle = 'on-chain oracle unavailable.';
+  }
+
+  let ageHtml, ageTitle;
+  if (oc.avail && oc.updated_unix > 0) {
+    const sec = Math.max(0, Math.floor(Date.now()/1000) - oc.updated_unix);
+    ageHtml = span(oracleAgeClass(sec), fmtAgo(oc.updated_unix));
+    ageTitle = 'age of the current on-chain round (latestRoundData updatedAt). writer age ' +
+      writerAge + ' (since the last block the position writer applied).';
+  } else {
+    ageHtml = span('dim', '—');
+    ageTitle = 'on-chain price age unavailable (node read pending or failed). writer age ' + writerAge + '.';
+  }
+  const roundHtml = (oc.avail && oc.round_id) ? span('dim', oc.round_id) : span('dim', '—');
+  const roundTitle = 'Chainlink aggregator round id of the current on-chain price ' +
+    '(latestRoundData; matches the predictor round). writer cursor block ' + (state.cursor_block||0) + '.';
+
+  // Our predictor's obs price for the current oracle round, shown beside the
+  // on-chain price as a live comparison. Use the first VALID future_obs point (the
+  // always-on next-block obs), else the latest OBSERVED prediction block. The
+  // predictor's round (pred.last_round_id) normally equals the on-chain round
+  // (oc.round_id); a mismatch is flagged in the hover (the comparison is then
+  // cross-round). The deviation uses the SAME reference + coloring as the ORACLE
+  // PREDICTION panel — measured against the RAW on-chain ETH/USD (both USD; the
+  // dev is HIDDEN when the node read is pending — neither panel falls back to the
+  // composed /v1/state oracle, which is USDC and would mix bases), bold red once
+  // it crosses the live dev_gate (i.e. the continuous-flood arm would fire) — so
+  // the two panels read the same metric identically.
+  let ourObs = 0;
+  for (const p of (pred.future_obs || [])) { if (p.valid && p.obs_price > 0) { ourObs = p.obs_price; break; } }
+  if (ourObs === 0) {
+    const blks = pred.blocks || [];
+    for (let i = blks.length - 1; i >= 0; i--) { if (blks[i].price_observed && (blks[i].obs_price||0) > 0) { ourObs = blks[i].obs_price; break; } }
+  }
+  let obsHtml, obsTitle;
+  if (ourObs > 0) {
+    const roundMatch = pred.last_round_id && oc.round_id && pred.last_round_id === oc.round_id;
+    const onchainRef = oc.avail && oc.price_usd > 0;
+    // Deviation is measured ONLY against the raw on-chain ETH/USD — obs and the
+    // raw feed are both USD, so it is apples-to-apples. Do NOT fall back to the
+    // composed market-state oracle (USDC): obs is USD, so obs-vs-composed mixes
+    // bases and is wrong by the USDC/USD discount (~0.027%). When the node read
+    // is pending/failed, HIDE the deviation rather than show a misleading one.
+    const obsRef = onchainRef ? oc.price_usd : 0;
+    const devGatePct = (rt.flooding_continuous_flood_dev_gate_pct || 0) * 100;
+    let devStr = '';
+    if (obsRef > 0) {
+      const dev = ((ourObs - obsRef) / obsRef) * 100;
+      let cls = 'dim';
+      if (devGatePct > 0 && dev <= -devGatePct) cls = 'rb';   // gate would arm
+      else if (dev < 0)                         cls = 'r';    // below oracle (downward)
+      devStr = ' <span class="' + cls + '">(' + (dev >= 0 ? '+' : '') + dev.toFixed(3) + '%)</span>';
+    }
+    obsHtml = '<b>$' + esc(ourObs.toFixed(2)) + '</b>' + devStr;
+    obsTitle = 'our predictor obs price for the current oracle round (round ' + (pred.last_round_id||'—') +
+      (roundMatch ? ' — matches the on-chain round' : ', the on-chain round is ' + (oc.round_id||'—') + ' — CROSS-ROUND, compare with care') +
+      '). ' + (onchainRef
+        ? 'Parenthetical = deviation vs the raw on-chain ETH/USD (both USD); negative = obs below the oracle (downward / liquidatable direction).'
+        : 'Deviation hidden — the node-local on-chain price read is pending/failed (no apples-to-apples USD reference).') +
+      (devGatePct > 0 ? ' Bold red ≤ −' + devGatePct.toFixed(2) + '% = the continuous-flood dev_gate would arm.' : '');
+  } else {
+    obsHtml = '<span class="dim">&mdash;</span>';
+    obsTitle = 'no predictor obs available (no active prediction and no future_obs).';
+  }
+
+  const body = '<div class="line">' +
+    '<span title="' + esc(priceTitle) + '">price ' + priceHtml + '</span>' +
+    '&nbsp;&nbsp;<span title="' + esc(obsTitle) + '">obs ' + obsHtml + '</span>' +
+    '&nbsp;&nbsp;<span title="' + esc(ageTitle) + '">age ' + ageHtml + '</span>' +
+    '&nbsp;&nbsp;<span title="' + esc(roundTitle) + '">round ' + roundHtml + '</span>' +
+    '</div>';
+  return panel('bd-state', 'ONCHAIN ORACLE', renderCandidateState(state.candidate_state), body);
+}
+
+// RUNTIME CONFIG — inline strategy selector + per-strategy dials + live/dry toggles
+// + manual start/stop. Replaces the old summary + modal. Every control applies to
+// the LIVE liquidator via /api/runtime; values reflect the operator's pending intent
+// (rtEffective) until the snapshot catches up. Strategy switch + start/stop are
+// instant; numeric dials commit on Enter/blur. Deep allocation/rails/registration
+// knobs live under the Advanced expander.
+function renderRuntimePanel(rt, feedName) {
+  rt = rt || {};
+  if (!rt.runtime_avail) {
+    return panel('bd-runtime', 'RUNTIME CONFIG', '', '<div class="empty">(runtime API unavailable)</div>');
+  }
+  const fe = esc(feedName);
+  const eff = (k) => rtEffective(feedName, rt, k);
+  const strat = normStrat(eff('flooding_strategy'));
+
+  // a numeric input that commits on Enter/blur
+  const numIn = (rtKey, w) => {
+    const fld = rtByKey[rtKey];
+    const step = fld.t === 'frac' ? '0.0001' : (fld.t === 'pct' ? '0.1' : '1');
+    return '<input class="rt2-num" type="number" min="0" step="' + step + '" style="width:' + (w || 60) + 'px" ' +
+      'value="' + fieldInputVal(fld, eff(rtKey)) + '" title="' + esc(fld.label) + '" ' +
+      'onkeydown="if(event.key===\'Enter\'||event.key===\'Escape\')this.blur()" ' +
+      'onblur="commitField(\'' + fe + '\',\'' + rtKey + '\',this)">';
+  };
+  const shapeIn = (rtKey) => {
+    const fld = rtByKey[rtKey];
+    const vals = eff(rtKey) || [0, 0, 0];
+    let inputs = '';
+    for (let i = 0; i < 3; i++) {
+      inputs += '<input class="rt2-num" type="number" min="' + (fld.allowZero ? '0' : '1') + '" step="1" style="width:56px" ' +
+        'value="' + (vals[i] || 0) + '" title="' + esc(['early','modal','late'][i]) + ' depth" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\'Escape\')this.blur()">';
+    }
+    return '<span onchange="commitShape(\'' + fe + '\',\'' + rtKey + '\',this)">' + inputs + '</span>';
+  };
+  // a <select> for an enum field (e.g. cost-cap policy) that commits on change
+  const selIn = (rtKey, w) => {
+    const fld = rtByKey[rtKey];
+    const cur = eff(rtKey) || fld.dflt;
+    let o = '';
+    for (const opt of fld.opts) o += '<option value="' + esc(opt) + '"' + (opt === cur ? ' selected' : '') + '>' + esc(opt) + '</option>';
+    return '<select class="rt2-num" style="width:' + (w || 150) + 'px" title="' + esc(fld.label) + '" ' +
+      'onchange="commitField(\'' + fe + '\',\'' + rtKey + '\',this)">' + o + '</select>';
+  };
+  // a live/dry toggle pill (dry=green/safe, LIVE=red/sends real txs)
+  const dryPill = (sec, rtKey, label) => {
+    const dry = !!eff(rtKey);
+    return '<span class="rt2-flag ' + (dry ? 'rt2-dry' : 'rt2-live') + '" ' +
+      'title="' + esc(label) + ' dry_run — click to toggle (LIVE sends real txs)" ' +
+      'onclick="setDry(\'' + fe + '\',\'' + sec + '\',\'' + rtKey + '\',' + (dry ? 'false' : 'true') + ')">' +
+      esc(label) + ' ' + (dry ? 'dry' : 'LIVE') + '</span>';
+  };
+  // a strategy radio (instant switch on select)
+  const radio = (val, label) => {
+    const on = strat === val;
+    return '<label class="rt2-radio"><input type="radio" name="strat_' + fe + '"' + (on ? ' checked' : '') +
+      ' onchange="setStrategy(\'' + fe + '\',\'' + val + '\')"><span class="' + (on ? 'b' : 'dim') + '">' + esc(label) + '</span></label>';
+  };
+
+  let b = '';
+  // live/dry row
+  b += '<div class="rt2-line">live: ' + dryPill('flooding','flooding_dry','flood') +
+       dryPill('candidate_reg','candidate_reg_dry','reg') + '</div>';
+
+  // strategy rows
+  b += '<div class="rt2-srow">' + radio('obs_price','continuous') +
+       '<span class="rt2-dials">base ' + numIn('flooding_continuous_flood_base_rate') +
+       ' dev_gate ' + numIn('flooding_continuous_flood_dev_gate_pct', 74) + '</span></div>';
+  // sample-step primary depths; the complete arrival shape is under Advanced.
+  b += '<div class="rt2-srow">' + radio('sample_step','sample-step') +
+       '<span class="rt2-dials">normal ' + numIn('flooding_sample_step_normal_depth', 64) +
+       ' hb ' + numIn('flooding_sample_step_heartbeat_depth', 56) +
+       ' bump ' + numIn('flooding_sample_step_bump_depth', 56) + '</span></div>';
+  const flooding = strat === 'manual' && !!eff('flooding_manual_enabled');
+  const manualBtn = flooding
+    ? '<button class="rt2-btn rt2-stop" onclick="stopManual(\'' + fe + '\')">&#9632; STOP</button>'
+    : '<button class="rt2-btn rt2-start" onclick="startManual(\'' + fe + '\')">&#9654; START</button>';
+  const manualStatus = flooding ? '<span class="r b">FLOODING</span>'
+    : (strat === 'manual' ? '<span class="dim">idle</span>' : '');
+  b += '<div class="rt2-srow">' + radio('manual','manual') +
+       '<span class="rt2-dials">txs/blk ' + numIn('flooding_manual_txs_per_block') + ' ' + manualBtn + ' ' + manualStatus + '</span></div>';
+
+  // advanced expander
+  const open = !!advancedOpen[feedName];
+  b += '<div class="rt2-adv-h" onclick="toggleAdvanced(\'' + fe + '\')">' + (open ? '&#9662;' : '&#9656;') + ' Advanced</div>';
+  if (open) {
+    b += '<div class="rt2-adv">' +
+      '<div class="rt2-line dim">allocation: ' +
+        '<span class="rt2-kv">total ' + numIn('flooding_max_total_n', 72) + '</span>' +
+        '<span class="rt2-kv">size-skip$ ' + numIn('flooding_size_cap_threshold_usdc', 80) + '</span></div>' +
+      '<div class="rt2-line dim">flood gate: widening ' + numIn('flooding_liquidatable_widening_pct', 72) + ' (frac, 0=strict)</div>' +
+      '<div class="rt2-line dim">rails: max_block_cap ' + numIn('flooding_max_block_cap') + '</div>' +
+      // sample-step additive bump tier (CONSTANT density; tip is eld[6,8]/nCong-ramped) + ext-hi window bound.
+      '<div class="rt2-line dim">sample-step bump: ' +
+        '<span class="rt2-kv">onset ' + numIn('flooding_sample_step_eld_bump_onset', 56) + '</span>' +
+        '<span class="rt2-kv">ext_hi_s ' + numIn('flooding_sample_step_ext_hi_sec', 56) + '</span></div>' +
+      '<div class="rt2-line dim">sample-step arrival [early, modal, late]: ' +
+        shapeIn('flooding_sample_step_arrival_shape') + '</div>' +
+      '<div class="rt2-line dim">sample-step drift [N+3, N+4, N+5]: ' +
+        shapeIn('flooding_sample_step_arrival_drift_shape') + '</div>' +
+      // sample-step flood cost-cap (default-off boot flag; these knobs tune the $-budget + distribution
+      // live). min_floor(dp) binds under depth_prop.
+      '<div class="rt2-line dim">sample-step cost cap: ' +
+        '<span class="rt2-kv">policy ' + selIn('flooding_sample_step_cost_cap_policy', 150) + '</span>' +
+        '<span class="rt2-kv">cap$ ' + numIn('flooding_sample_step_cost_cap_absolute_usd', 64) + '</span>' +
+        '<span class="rt2-kv">profit_rate ' + numIn('flooding_sample_step_cost_cap_profit_rate', 64) + '</span>' +
+        '<span class="rt2-kv">frac_base ' + numIn('flooding_sample_step_cost_cap_frac_base', 56) + '</span>' +
+        '<span class="rt2-kv">min_floor(dp) ' + numIn('flooding_sample_step_cost_cap_min_floor', 56) + '</span>' +
+        '<span class="rt2-kv">landing_floor ' + numIn('flooding_sample_step_cost_cap_landing_floor_txs', 56) + '</span>' +
+        '<span class="rt2-kv">our_gas ' + numIn('flooding_sample_step_cost_cap_our_gas', 64) + '</span></div>' +
+      '<div class="rt2-line dim">delta-stage cost cap: ' +
+        '<span class="rt2-kv">cap$/target ' + numIn('flooding_sample_step_cost_cap_deltastage_cap_usd', 64) + '</span>' +
+        '<span class="rt2-kv">profit fraction ' + numIn('flooding_sample_step_cost_cap_deltastage_frac', 64) + '</span></div>' +
+      '<div class="rt2-line dim">registration: ' +
+        '<span class="rt2-kv">min_borrow$ ' + numIn('candidate_reg_min_borrow_usdc') + '</span>' +
+        '<span class="rt2-kv">entry_margin% ' + numIn('candidate_reg_register_margin_pct', 56) + '</span>' +
+        '<span class="rt2-kv">exit_buffer% ' + numIn('candidate_reg_activation_exit_buffer_pct', 56) + '</span></div>' +
+      // RFQ knobs are BTC-only (the ETH instance has no RFQ path); show + edit for BTC only.
+      (feedName === 'BTC'
+        ? '<div class="rt2-line dim">rfq: <label class="rt2-chk"><input type="checkbox"' +
+            (!!eff('rfq_enabled') ? ' checked' : '') +
+            ' onchange="commitBool(\'' + fe + '\',\'rfq_enabled\',this)"> enabled</label>' +
+            ' near_liq% ' + numIn('rfq_near_liq_margin_pct', 56) +
+            ' refresh_s ' + numIn('rfq_refresh_interval_sec', 56) +
+            ' max_q/s ' + numIn('rfq_max_quotes_per_sec', 56) + '</div>'
+        : '') +
+      '<div class="rt2-line"><label class="rt2-chk"><input type="checkbox"' +
+        (!!eff('flooding_test_force_dispatch_on_active') ? ' checked' : '') +
+        ' onchange="commitBool(\'' + fe + '\',\'flooding_test_force_dispatch_on_active\',this)"> TEST force-dispatch</label>' +
+        (!!eff('flooding_test_force_dispatch_on_active') ? ' <span class="rb">[!]</span>' : '') +
+        ' <label class="rt2-chk"><input type="checkbox"' +
+        (!!eff('flooding_debug_per_tx_send') ? ' checked' : '') +
+        ' onchange="commitBool(\'' + fe + '\',\'flooding_debug_per_tx_send\',this)"> debug successful sends</label></div>' +
+      '<div class="rt2-line dim">chain=' + esc(rt.chain_id||'?') + ' &middot; confirm-mainnet=' +
+        span(rt.confirm_mainnet ? 'g' : 'dim', rt.confirm_mainnet ? 'ON' : 'off') + '</div>' +
+      '</div>';
+  }
+
+  const stratCls = (strat === 'obs_price' || strat === 'sample_step') ? 'g' : (strat === 'manual' ? 'y' : 'dim');
+  const meta = 'strat=' + span(stratCls, stratDisp(strat));
+  return panel('bd-runtime', 'RUNTIME CONFIG', meta, b);
+}
+
+// FLOOD ECON — realized cost vs profit since the anchor + breaker status (fixed 2 lines).
+function renderEconPanel(econ, headTxs, armed, runtime) {
+  econ = econ || {};
+  runtime = runtime || {};
+  // The status tag mirrors the breaker's EFFECTIVE state so it stays consistent
+  // with the "breaker armed" switch at the top of the column. The breaker only
+  // auto-disarms when armed (the page toggle) AND mode != report. `armed`
+  // defaults to true (the breaker is armed by default) so an old/missing value
+  // reads unchanged. There is no latch: a trip holds until "reset stats" or
+  // profit recovers, and every armed cycle re-disarms a feed flooding or
+  // registering live.
+  const isArmed = armed !== false;
+  const disarmed = runtime.runtime_avail && runtime.flooding_dry && runtime.candidate_reg_dry;
+  let tag;
+  if (econ.mode === 'non_owner') tag = (runtime.runtime_avail && !runtime.flooding_dry)
+    ? '<span class="rb">INVALID: NON-OWNER LIVE</span>'
+    : '<span class="dim">POOL NON-OWNER</span>';
+  else if (econ.tripping && econ.mode === 'report') tag = '<span class="y">WOULD TRIP (report)</span>';
+  else if (econ.tripping && !isArmed)               tag = '<span class="y">WOULD TRIP — breaker off</span>';
+  else if (econ.tripping && disarmed)               tag = '<span class="rb">TRIPPED — disarmed</span>';
+  else if (econ.tripping)                           tag = '<span class="rb">TRIPPED — disarming</span>';
+  else if (econ.err)               tag = '<span class="rb">NOT READY</span>';
+  else if (econ.mode === 'report') tag = '<span class="dim">report-only</span>';
+  else if (!isArmed)               tag = '<span class="y">DISARMED</span>';
+  else                             tag = '<span class="g">ARMED</span>';
+
+  const net = (econ.profit_usd||0) - (econ.cost_usd||0);
+  const netStr = (net < 0 ? '-$' : '$') + Math.abs(net).toFixed(2);
+  // Cost is shown against the REAL auto-kill threshold (the $1000 cost-trip, which
+  // is what the breaker disarms on); it now equals the display cap, so the bar
+  // reads directly against the value that trips. cost_trip_usd carries the live trip value.
+  const trip = Math.round(econ.cost_trip_usd || 1000);
+  // 1k-tx cost = live (base fee + weighted flood tip) × 45,015 gas × 1000,
+  // valued at the gas ETH/USD. 0 ⇒ "—" (liquidator gas params not live yet).
+  // eth_usd is the gas-valuation basis (gas is paid in ETH on Base for BOTH
+  // feeds — NOT the feed's asset price); kept in the hover title so it doesn't
+  // read as an ETH-data leak in the BTC column.
+  const kTx = econ.thousand_tx_cost_usd || 0;
+  const kTxStr = kTx > 0 ? '$' + kTx.toFixed(2) : '—';
+  let b = '<div class="line">' +
+    'txs <b>' + esc((econ.flood_txs||0).toLocaleString()) + '</b>' +
+    '&nbsp;&middot; cost $' + esc((econ.cost_usd||0).toFixed(2)) +
+      '/<span title="$' + esc(trip) + ' = the flood-cost auto-kill threshold — the breaker disarms this feed once cumulative cost exceeds it AND net is negative">$' + esc(trip) + ' trip</span>' +
+    '&nbsp;&middot; profit $' + esc((econ.profit_usd||0).toFixed(2)) +
+    '&nbsp;&middot; net ' + span(net < 0 ? 'r' : 'g', netStr) +
+    '&nbsp;&middot; <span title="live base fee + weighted flood tip × 45,015 gas/tx × 1k, @ $' +
+      esc(Math.round(econ.eth_usd||0).toLocaleString()) + '/ETH">1k txs cost: ' + esc(kTxStr) + '</span></div>';
+  // second line: error (red) > verdict (dim) — always present so height is fixed.
+  if (econ.mode === 'non_owner' && runtime.runtime_avail && !runtime.flooding_dry)
+                        b += '<div class="line r">⚠ non-owner feed must not flood live</div>';
+  else if (econ.tripping) b += '<div class="line r">' + esc(econ.verdict) + '</div>';
+  else if (econ.err)   b += '<div class="line y">⚠ ' + esc(econ.err) + '</div>';
+  else if (econ.verdict) b += '<div class="line dim">' + esc(econ.verdict) + '</div>';
+  else                 b += '<div class="line dim">&nbsp;</div>';
+  // Head-block tx count: a real-time proxy for network / competitor flooding
+  // intensity (when competitors flood, the head block fills with txs). Global
+  // (same chain for both feeds); shown in each FLOOD ECON header.
+  const headStr = (headTxs > 0)
+    ? '<span title="total tx count in the current head block — a real-time proxy for network / competitor flooding intensity">head ' + esc(headTxs) + 'tx</span> &middot; '
+    : '';
+  // The window survives dashboard and liquidator restarts; only "reset stats"
+  // moves it. anchor_unix is the first start or the last reset.
+  const sinceStr = (econ.anchor_unix > 0)
+    ? '<span class="dim" title="cost/profit counted after block ' + esc(econ.anchor_block) + ' (through block ' + esc(econ.counted_block) + '); only reset stats re-anchors">since ' + esc(liqDateUTC(econ.anchor_unix) + ' ' + fmtTime(econ.anchor_unix)) + 'Z</span>'
+    : '<span class="dim">not anchored</span>';
+  return panel('bd-econ', 'FLOOD ECON',
+    headStr + sinceStr + ' &mdash; ' +
+    '<span title="Flood breaker status. Controlled by the &quot;breaker armed&quot; switch at the top of this column; auto-disarms a feed flooding past the $' + esc(trip) + ' cost-trip threshold while net-negative.">' + tag + '</span>', b);
+}
+
+// ORACLE PREDICTION — per-block obs-price, its deviation vs the current on-chain
+// price, the tx prediction, and the flooding alloc. oc = the node-local Chainlink
+// read; state = the liquidator /v1/state view (the deviation reference falls back
+// to the latter when the node read is pending).
+function renderPredPanel(pred, rt, oc, state) {
+  pred = pred || {}; rt = rt || {}; oc = oc || {}; state = state || {};
+  if (!pred.avail) return panel('bd-pred', 'ORACLE PREDICTION', '<span class="dim">unavailable</span>', '<div class="empty">(no data)</div>');
+
+  let meta = span(pred.active ? 'g' : 'dim', pred.active ? 'ACTIVE' : 'IDLE');
+  if (pred.is_cascade) meta += ' <span class="rb">CASCADE</span>';
+  meta += ' &middot; msg ' + span(ageClass(pred.time_since_last_message_ms||0), (pred.time_since_last_message_ms||0)+'ms');
+  meta += ' &middot; round ' + span('dim', pred.last_round_id||0);
+
+  // Data source: the active prediction's per-block series when present (full
+  // alloc model); otherwise the predictor's observability-only FUTURE-OBS window
+  // (obs price only — no txs/alloc), so obs stays visible with no live prediction.
+  const blocks = pred.blocks || [];
+  const futureObs = pred.future_obs || [];
+  const usingFuture = blocks.length === 0;
+  if (usingFuture && futureObs.length === 0) {
+    return panel('bd-pred', 'ORACLE PREDICTION', meta, '<div class="empty">(no prediction data)</div>');
+  }
+  if (usingFuture) {
+    meta += ' &middot; <span class="dim" title="no active prediction — showing the predictor\'s projected obs for the next blocks (future_obs). txs/alloc not applicable.">future obs</span>';
+  }
+
+  const maxBlockCap = rt.flooding_max_block_cap || 0;
+
+  // ref = the current on-chain price the obs deviation is measured against: the
+  // node-local RAW Chainlink ETH/USD read. obs and this raw feed are both USD, so
+  // the dev is apples-to-apples. Do NOT fall back to the /v1/state oracle when the
+  // node read is pending: that is the COMPOSED Morpho price (USDC), and obs is USD,
+  // so the mix is wrong by the USDC/USD discount (~0.027% for ETH). When the raw
+  // read is unavailable, ref=0 ⇒ devCell hides the dev (mirrors the ONCHAIN ORACLE
+  // panel — the two stay consistent).
+  const ref = (oc.avail && oc.price_usd > 0) ? oc.price_usd : 0;
+  const refSrc = (oc.avail && oc.price_usd > 0) ? 'on-chain Chainlink price' : '';
+  // dev_gate threshold as a PERCENT (config holds a fraction, e.g. 0.0013 = 0.13%):
+  // the continuous-flood arm fires when obs <= oracle*(1-dev_gate), i.e. dev <= -gate%.
+  const devGatePct = (rt.flooding_continuous_flood_dev_gate_pct || 0) * 100;
+  const devTitle = 'obs_price deviation vs the current ' + (refSrc || 'on-chain oracle') +
+    (ref > 0 ? ' ($' + ref.toFixed(2) + ')' : '') + ': (obs − price) / price. ' +
+    'Negative = obs below the oracle (downward / liquidatable direction). ' +
+    (devGatePct > 0 ? 'Bold red ≤ −' + devGatePct.toFixed(2) + '% = the continuous-flood dev_gate would arm.'
+                    : 'dev_gate off.');
+
+  // devCell formats the dev% cell from an obs price + whether it's meaningful.
+  // Shared by the prediction-block rows and the future-obs rows.
+  const devCell = (obsPrice, observed) => {
+    if (!(observed && ref > 0 && obsPrice > 0)) return '<span class="dim">&mdash;</span>';
+    const dev = ((obsPrice - ref) / ref) * 100;
+    let cls = 'dim';
+    if (devGatePct > 0 && dev <= -devGatePct) cls = 'rb';  // gate would arm
+    else if (dev < 0)                         cls = 'r';   // below oracle (downward)
+    return '<span class="' + cls + '">' + (dev >= 0 ? '+' : '') + dev.toFixed(2) + '%</span>';
+  };
+  const obsMarkOf = observed => observed ? '<span class="g">&#9679;</span>' : '<span class="dim">&#9675;</span>';
+
+  let body = '<table><colgroup>' +
+    '<col style="width:70px"><col style="width:50px"><col style="width:88px">' +
+    '<col style="width:62px"><col style="width:72px"><col style="width:60px"><col style="width:32px"></colgroup>' +
+    '<thead><tr><th>time</th><th>&Delta;t</th><th class="num">obs_price</th>' +
+    '<th class="num" title="' + esc(devTitle) + '">dev%</th>' +
+    '<th class="num">pred_txs</th><th class="num">alloc</th><th class="c">obs</th></tr></thead><tbody>';
+  if (!usingFuture) {
+    for (const blk of blocks) {
+      const priceStr = blk.price_observed ? usdPx(blk.obs_price) : '&mdash;';
+      let allocStr = String(blk.alloc || 0), allocCls = '';
+      if (blk.alloc_gated) allocStr += '↓';
+      if (blk.alloc === 0 || blk.alloc_gated)              allocCls = 'alloc-dim';
+      else if (maxBlockCap > 0 && blk.alloc >= maxBlockCap / 2)      allocCls = 'alloc-r';
+      else if (maxBlockCap > 0 && blk.alloc >= maxBlockCap / 10)     allocCls = 'alloc-y';
+      // gate_reason (present only on a gated 0-alloc block) surfaces WHY as the cell tooltip.
+      // esc() covers &<>; also neutralise quotes for the attribute-value context.
+      const allocTitle = blk.gate_reason ? ' title="' + esc(blk.gate_reason).replace(/"/g, '&quot;') + '"' : '';
+      body += '<tr>' +
+        '<td class="dim">' + esc(fmtTime(blk.block_sec||0)) + '</td>' +
+        '<td class="dim">' + esc(fmtDelta(blk.block_sec||0)) + '</td>' +
+        '<td class="num">' + priceStr + '</td>' +
+        '<td class="num">' + devCell(blk.obs_price||0, blk.price_observed) + '</td>' +
+        '<td class="num">' + esc((blk.txs||0).toFixed(1)) + '</td>' +
+        '<td class="num ' + allocCls + '"' + allocTitle + '>' + esc(allocStr) + '</td>' +
+        '<td class="c">' + obsMarkOf(blk.price_observed) + '</td></tr>';
+    }
+  } else {
+    // future-obs rows: obs price + dev% only; pred_txs / alloc are "—" (not
+    // applicable without an active prediction). `valid` gates the price/marker.
+    for (const p of futureObs) {
+      const observed = !!p.valid;
+      const priceStr = observed ? usdPx(p.obs_price) : '&mdash;';
+      body += '<tr>' +
+        '<td class="dim">' + esc(fmtTime(p.block_sec||0)) + '</td>' +
+        '<td class="dim">' + esc(fmtDelta(p.block_sec||0)) + '</td>' +
+        '<td class="num">' + priceStr + '</td>' +
+        '<td class="num">' + devCell(p.obs_price||0, observed) + '</td>' +
+        '<td class="num dim">&mdash;</td>' +
+        '<td class="num dim">&mdash;</td>' +
+        '<td class="c">' + obsMarkOf(observed) + '</td></tr>';
+    }
+  }
+  body += '</tbody></table>';
+  return panel('bd-pred', 'ORACLE PREDICTION', meta, body);
+}
+
+// ON-CHAIN REGISTERED — the alive/enabled rows from the MainContract, plus the
+// physical slot-array length. Rows are shown in deterministic physical-index
+// order only; V4's sizeIndex owns execution priority and is not read here. The
+// stored trigger comes directly from each V4 tuple. The gate chip carries the
+// contract's largest_trigger and its trigger-write age from packedScalars.
+function renderOnchainPanel(feed) {
+  const onchain = (feed && feed.onchain) || {};
+  const gate = (feed && feed.onchain_gate) || {};
+  if (!onchain.avail) return panel('bd-onchain', 'ON-CHAIN REGISTERED', '<span class="dim">reading contract…</span>', '<div class="empty">(reading contract…)</div>');
+  const count = onchain.count || 0;
+  const physicalCount = onchain.physical_count || 0;
+  const cands = (onchain.cands || []).slice();
+
+  // Gate chip. MainContractV4 keeps the drain gate = largest_trigger (the max
+  // stored candidate trigger, 8-dec USD, conservative-HIGH) packed in its
+  // scalars slot; the contract's cheap on-chain gate opens when Chainlink
+  // latestAnswer <= this value. V4 reads the oracle live at drain time. Shown
+  // dim: gate trigger +
+  // age since the last on-chain trigger write.
+  let gateHtml;
+  if (gate.avail && gate.price_usd > 0) {
+    const gAge = gate.ts > 0 ? fmtAgo(gate.ts) : '—';
+    const gTitle = 'on-chain GATE trigger = the max stored candidate trigger (largest_trigger in the V4 packedScalars slot, conservative-HIGH). The contract\'s cheap drain gate opens when Chainlink latestAnswer <= this value. age = since the last on-chain trigger write (register / updateTriggers / removeCandidate).';
+    gateHtml = ' &middot; <span class="dim" title="' + esc(gTitle) + '">gate ' + esc(usdPx(gate.price_usd)) + ' &middot; ' + esc(gAge) + '</span>';
+  } else {
+    gateHtml = ' &middot; <span class="dim" title="on-chain gate not yet read (or no candidates registered)">gate &mdash;</span>';
+  }
+
+  // USDC-basis price readouts: the composed Morpho price + the obs price + the
+  // obs deviation, ALL in USDC — the same basis as this panel's trigger / gate
+  // columns. Morpho liquidates a name iff its (USDC) composed price ≤ trigger;
+  // the ONCHAIN ORACLE panel's headline is RAW ETH/USD (~0.027% lower, a
+  // different basis), so eyeballing that headline against these triggers is the
+  // apples-to-oranges trap. These chips give the like-for-like comparison.
+  const st = (feed && feed.state) || {};
+  const pred = (feed && feed.prediction) || {};
+  const rt = (feed && feed.runtime) || {};
+  const composed = st.oracle_price_usd || 0;          // USDC — Morpho price()
+  const usdcUsd = st.usdc_usd > 0 ? st.usdc_usd : 1;  // ~0.9997 ETH, 1.0 BTC
+  // current obs: first VALID future_obs (always-on next block), else latest OBSERVED block.
+  let obsUsd = 0;
+  for (const p of (pred.future_obs || [])) { if (p.valid && p.obs_price > 0) { obsUsd = p.obs_price; break; } }
+  if (obsUsd === 0) { const bl = pred.blocks || []; for (let i = bl.length - 1; i >= 0; i--) { if (bl[i].price_observed && (bl[i].obs_price||0) > 0) { obsUsd = bl[i].obs_price; break; } } }
+  let priceChips = '';
+  if (composed > 0) {
+    const mTitle = 'composed Morpho price (USDC) = ETH/USD ÷ USDC/USD — the EXACT price Morpho liquidates on, SAME basis as the trigger column below. ' +
+      'The ONCHAIN ORACLE panel headline is RAW ETH/USD, ~' + ((1-usdcUsd)*100).toFixed(3) + '% lower (USDC/USD ' + usdcUsd.toFixed(5) + '); do NOT compare that headline to these triggers.';
+    priceChips += ' &middot; <span title="' + esc(mTitle) + '">morpho <b class="r">$' + esc(composed.toFixed(2)) + '</b></span>';
+    if (obsUsd > 0) {
+      const obsUsdc = obsUsd / usdcUsd;            // USD obs → USDC basis
+      const dev = ((obsUsdc - composed) / composed) * 100;
+      const devGatePct = (rt.flooding_continuous_flood_dev_gate_pct || 0) * 100;
+      let cls = 'dim';
+      if (devGatePct > 0 && dev <= -devGatePct) cls = 'rb';   // continuous-flood gate would arm
+      else if (dev < 0)                         cls = 'r';    // obs below oracle (downward / liquidatable direction)
+      const oTitle = 'our predictor obs price converted to the USDC basis (obs_USD ÷ USDC/USD ' + usdcUsd.toFixed(5) + '). ' +
+        'Parenthetical = deviation vs the composed Morpho price; negative = obs below the oracle (downward / liquidatable direction).' +
+        (devGatePct > 0 ? ' Bold red ≤ −' + devGatePct.toFixed(2) + '% = the continuous-flood dev_gate would arm.' : '');
+      priceChips += ' &middot; <span title="' + esc(oTitle) + '">obs <b class="r">$' + esc(obsUsdc.toFixed(2)) + '</b> <span class="' + cls + '">(' + (dev>=0?'+':'') + dev.toFixed(3) + '%)</span></span>';
+    }
+  }
+
+  const slotsMeta = physicalCount > 0 ? ' &middot; ' + esc(physicalCount) + ' slots' : '';
+  const meta = esc(count) + ' alive' + slotsMeta + ' &middot; age ' + span('dim', fmtAgo(onchain.age_unix)) + gateHtml + priceChips;
+  if (cands.length === 0) return panel('bd-onchain', 'ON-CHAIN REGISTERED', meta, '<div class="empty">(none)</div>');
+
+  // Deterministic display order only. Physical index is not V4 execution order;
+  // the contract's sizeIndex owns collateral-priority execution.
+  cands.sort((a, b) => (b.index||0) - (a.index||0));
+
+  const idxTitle = 'on-chain candidate-array storage index. Rows are shown in deterministic descending ' +
+    'physical-index order for inspection only; V4 execution priority is owned by sizeIndex.';
+  const trigTitle = 'the STORED on-chain trigger (uint48, 8-dec USD) read from the contract\'s candidate ' +
+    'slot — the contract\'s truth, not the liq service\'s live trigger. The service writes it ' +
+    'conservative-HIGH (ceil + per-feed margin), so it sits slightly ABOVE the live off-chain trigger ' +
+    'and goes stale-high as the position accrues interest, until the next drift refresh.';
+  const gapTitle = 'safety margin of the STORED on-chain trigger vs the composed Morpho price ' +
+    '(same USDC basis): (morpho − trigger) / morpho. Negative = the stored trigger is in the ' +
+    'liquidatable zone at the current Morpho price.';
+  let body = '<table><colgroup><col style="width:34px"><col><col style="width:60px">' +
+    '<col style="width:100px"><col style="width:70px"></colgroup>' +
+    '<thead><tr><th title="' + esc(idxTitle) + '">idx</th><th>borrower</th><th class="num">seize</th>' +
+    '<th class="num" title="' + esc(trigTitle) + '">trigger</th>' +
+    '<th class="num" title="' + esc(gapTitle) + '">safe &Delta;%</th></tr></thead><tbody>';
+  for (const c of cands) {
+    const haveTrig = (c.trigger_usd || 0) > 0;
+    const trigStr = haveTrig ? esc(usdPx(c.trigger_usd)) : '<span class="dim">&mdash;</span>';
+    let gapStr = '<span class="dim">&mdash;</span>';
+    if (haveTrig && composed > 0) {
+      const g = gapCell((composed - c.trigger_usd) / composed * 100);
+      gapStr = '<span class="' + g.cls + '">' + esc(g.str) + '</span>';
+    }
+    body += '<tr>' +
+      '<td class="dim">' + esc(c.index||0) + '</td>' +
+      '<td>' + esc(shortAddr(c.borrower)) + '</td>' +
+      '<td class="num">' + esc(compactNum(c.seize_amount)) + '</td>' +
+      '<td class="num">' + trigStr + '</td>' +
+      '<td class="num">' + gapStr + '</td></tr>';
+  }
+  body += '</tbody></table>';
+  return panel('bd-onchain', 'ON-CHAIN REGISTERED', meta, body);
+}
+
+// gapCell formats a "safe Δ%" value into {str, cls} with the TUI's coloring:
+// LZ (liquidatable zone) for negative, bold-red <0.5%, yellow <2%. Shared by the
+// OFF-CHAIN CANDIDATES table and the ON-CHAIN REGISTERED table.
+function gapCell(gap) {
+  gap = gap || 0;
+  let str = gap.toFixed(2) + '%', cls = '';
+  if (gap < 0)        { str = 'LZ ' + gap.toFixed(2) + '%'; cls = 'rb'; }
+  else if (gap < 0.5)  cls = 'rb'; // TUI uses bold red (\033[1;31m) for both <0 and <0.5
+  else if (gap < 2.0)  cls = 'y';
+  return { str, cls };
+}
+
+// candTable renders rows of {borrower, borrowed_usd, trigger, gap_pct} for the
+// OFF-CHAIN CANDIDATES near-liquidation table.
+function candTable(items) {
+  let body = '<table><colgroup><col style="width:30px"><col><col style="width:92px">' +
+    '<col style="width:100px"><col style="width:80px"></colgroup>' +
+    '<thead><tr><th>#</th><th>borrower</th><th class="num">borrowed</th>' +
+    '<th class="num">trigger</th><th class="num">safe &Delta;%</th></tr></thead><tbody>';
+  for (let i = 0; i < items.length; i++) {
+    const c = items[i];
+    const g = gapCell(c.gap_pct);
+    body += '<tr>' +
+      '<td class="dim">' + esc(i+1) + '</td>' +
+      '<td>' + esc(shortAddr(c.borrower)) + '</td>' +
+      '<td class="num">' + esc(usdInt(c.borrowed_usd)) + '</td>' +
+      '<td class="num">' + esc(usdPx(c.trigger)) + '</td>' +
+      '<td class="num ' + g.cls + '">' + esc(g.str) + '</td></tr>';
+  }
+  return body + '</tbody></table>';
+}
+
+// OFF-CHAIN CANDIDATES — ALWAYS the near-liquidation watchlist: the positions
+// within near_liq.within_pct (10%) of their liquidation threshold whose borrow
+// clears the runtime registration floor (candidate_reg_min_borrow_usdc), ranked
+// by trigger, top N (read from /v1/near-liquidation). This is the "what's
+// approaching liquidation" view; the actually-registered set is the separate
+// ON-CHAIN REGISTERED panel. The /v1/candidates intended set is not used to
+// populate the on-chain rows. Unavailable
+// only at cold start (oracle/threshold not yet read).
+function renderCandidatesPanel(feed) {
+  const nl = feed.near_liq || {};
+  if (!nl.avail) {
+    return panel('bd-cand', 'OFF-CHAIN CANDIDATES', '<span class="dim">near-liq</span>',
+      '<div class="empty">(reading…)</div>');
+  }
+  const items = nl.items || [];
+  const within = Math.round((nl.within_pct || 0) * 100);
+  const floor = nl.min_usd ? ' &middot; &ge;$' + esc(Number(nl.min_usd).toLocaleString()) : '';
+  const meta = '<span class="y">near-liq</span> top ' + esc(items.length) +
+    ' of ' + esc(nl.count || items.length) + ' &middot; within ' + esc(within) + '%' + floor;
+  if (!items.length) {
+    return panel('bd-cand', 'OFF-CHAIN CANDIDATES', meta,
+      '<div class="empty">(none within ' + esc(within) + '%)</div>');
+  }
+  return panel('bd-cand', 'OFF-CHAIN CANDIDATES', meta, candTable(items));
+}
+
+function renderTotals(feedName, totals, resetUnix) {
+  totals = totals || {};
+  // The $ shown is GROSS profit (seized − repaid, gross of gas), not the repaid
+  // debt size — labelled "profit" so it isn't mistaken for borrow size.
+  const sinceStr = (resetUnix > 0)
+    ? ' &middot; <span class="dim" title="stats reset by the operator at this time (UTC)">since reset ' + esc(fmtTime(resetUnix)) + 'Z</span>'
+    : '';
+  return '<span class="b">' + esc(feedName) + '</span>:&nbsp;' +
+    'liqs ' + esc(totals.liqs||0) + ' (' + usd(totals.profit_usd||0) + ' profit)' +
+    ' &middot; ours ' + esc(totals.ours||0) + ' (' + usd(totals.ours_profit_usd||0) + ' profit)' +
+    ' &middot; floods ' + esc(totals.floods||0) +
+    ' &middot; regs ' + esc(totals.regs||0) +
+    ' &middot; blocks ' + esc(totals.blocks||0) +
+    ' &middot; orc ' + esc(totals.orc||0) +
+    sinceStr;
+}
+
+function renderColumn(name, feed, headTxs) {
+  feed = feed || {};
+  // Reconcile the operator's pending breaker toggle with the snapshot: once the
+  // server reports the intended value, drop the optimistic override; until then
+  // show the intent so a stale in-flight snapshot can't bounce the checkbox.
+  let armedShown = !!feed.armed;
+	const poolNonOwner = feed.econ && feed.econ.mode === 'non_owner';
+  if (name in pendingArmed) {
+    if (!!feed.armed === pendingArmed[name]) delete pendingArmed[name]; // server caught up
+    else armedShown = pendingArmed[name];                              // still pending → show intent
+  }
+  let html = '<div class="col">';
+  const restartDisabled = restartPending ? ' disabled' : '';
+  const restartLabel = restartPending === name ? '&#8635; restarting&hellip;' : '&#8635; restart service';
+  const activeStart = feed.runtime && feed.runtime.flood_account_start_index;
+  const activeCount = feed.runtime && feed.runtime.flood_account_count;
+  html += '<div class="col-head">' +
+    '<span class="col-title">' + esc(name) + '</span>' +
+    '<span>' + renderConnBadge(feed.conn) + '</span>' +
+    (activeCount > 0 && feed.flood_acct_count > 0
+      ? '<span class="dim" title="active sender range from the service runtime; monitored range includes maintained reserve accounts">active EOAs ' +
+          esc(activeStart) + '&ndash;' + esc(activeStart + activeCount - 1) +
+          ' &middot; monitored ' + esc(feed.flood_acct_start) + '&ndash;' + esc(feed.flood_acct_start + feed.flood_acct_count - 1) + '</span>'
+      : '') +
+    '<span class="spacer"></span>' +
+    '<label class="sw" title="Flood breaker: when ARMED, auto-disarms this feed (flooding + registration → dry-run) if it floods past the cost-trip threshold while net-negative. Live status is the tag in the FLOOD ECON panel below.">' +
+      '<input type="checkbox" ' + (armedShown ? 'checked' : '') + (poolNonOwner ? ' disabled' : '') +
+      ' onchange="setArmed(\'' + esc(name) + '\', this.checked, this)"> breaker armed</label>' +
+    '<button class="rt2-btn restart-btn"' + restartDisabled +
+      ' title="Recovery only: restart this feed\'s systemd service using the currently deployed release. Runtime switches return to boot-dry; this does not deploy or make the feed live."' +
+      ' onclick="restartService(\'' + esc(name) + '\')">' + restartLabel + '</button>' +
+    '<button class="rt2-btn" title="Clean stats: zero this feed\'s TOTALS and re-anchor FLOOD ECON cost/profit to now (also re-arms the flood-cost auto-kill budget). Does NOT change flooding or registration." onclick="resetStats(\'' + esc(name) + '\')">&#8635; reset stats</button>' +
+    '</div>';
+  html += renderOnchainOraclePanel(feed.state, feed.oracle_chain, feed.prediction, feed.runtime);
+  html += renderRuntimePanel(feed.runtime, name);
+  html += renderEconPanel(feed.econ, headTxs, armedShown, feed.runtime);
+  html += renderPredPanel(feed.prediction, feed.runtime, feed.oracle_chain, feed.state);
+  html += renderOnchainPanel(feed);
+  html += renderCandidatesPanel(feed);
+  html += '</div>';
+  return html;
+}
+
+// colsBusy reports whether the operator is mid-edit in an inline runtime field
+// inside #cols — a focused number/text input or an open <select>. While true, the
+// 2s poll skips the #cols rebuild so it can't wipe the field being typed.
+function colsBusy() {
+  const a = document.activeElement;
+  if (!a) return false;
+  const cols = document.getElementById('cols');
+  if (!cols || !cols.contains(a)) return false;
+  return a.tagName === 'SELECT' || (a.tagName === 'INPUT' && (a.type === 'number' || a.type === 'text'));
+}
+
+// ── Main render ────────────────────────────────────────────────────────────────
+function render(s) {
+  lastSnapshot = s; // keep the latest snapshot so the runtime editor reads current values
+  const age = Math.max(0, Math.floor(Date.now() / 1000) - (s.updated_unix || 0));
+  const feeds = s.feeds || {};
+  const order = {ETH: 0, BTC: 1, CBETH: 2, CBXRP: 3};
+  const colOrder = Object.entries(feeds).sort((a, b) =>
+    (order[a[0]] ?? 99) - (order[b[0]] ?? 99));
+
+  // Header chips show the MARKET-STATE oracle (the /v1/state price Morpho uses to
+  // decide liquidatability — what the bot acts on), falling back to the on-chain
+  // price only until /v1/state is ready. The direct on-chain read + round live in
+  // the per-feed ONCHAIN ORACLE panel.
+  const priceChips = colOrder.map(([n, f]) => {
+    const o = (f.state && f.state.oracle_price_usd > 0) ? f.state.oracle_price_usd : (f.price_usd||0);
+    // Show the EXACT oracle price (not usd()'s whole-dollar rounding): the oracle
+    // carries real sub-dollar precision (e.g. 1662.99994474) and that is the price
+    // Morpho liquidates against, so the operator wants it verbatim. min 2 / max 8
+    // fraction digits (Intl rounds, avoiding float64 tail noise; trailing zeros
+    // beyond 2 trimmed).
+    const oStr = '$' + o.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 8 });
+    return '<span class="price-chip" title="market-state oracle (/v1/state) — the exact price Morpho uses to decide liquidatability">' +
+      esc(n) + ' ' + esc(oStr) + '</span>';
+  }).join('');
+  document.getElementById('bar').innerHTML =
+    '<b>liq-dashboard</b>' +
+    '<span class="dim">head ' + esc(s.head||0) + '</span>' +
+    '<span class="' + (age > 15 ? 'stale-hdr' : 'dim') + '">updated ' + esc(age) + 's ago</span>' +
+    priceChips;
+
+  // Skip the #cols rebuild while the operator is typing in an inline runtime input
+  // (the wholesale innerHTML replace would destroy a focused/dirty field). Radios,
+  // checkboxes and buttons don't hold a typing focus, so they never block. The
+  // pending-intent reconcile (pendingRT) keeps instant controls consistent across
+  // the ticks that DO rebuild. bar/totals/activity always update.
+  if (!colsBusy()) {
+    document.getElementById('cols').innerHTML =
+      colOrder.map(([n, f]) => renderColumn(n, f, s.head_txs)).join('');
+  }
+
+  // Standalone demo: preserve the production view while disabling operational controls.
+  document.querySelectorAll('#cols input, #cols select, #cols button').forEach(el => {
+    el.disabled = true;
+    el.title = 'Mock-data demo: operational controls are disabled';
+  });
+  document.querySelectorAll('#cols .rt2-flag').forEach(el => {
+    el.removeAttribute('onclick');
+    el.setAttribute('aria-disabled', 'true');
+    el.title = 'Mock-data demo: operational controls are disabled';
+  });
+
+  document.getElementById('totals').innerHTML =
+    colOrder.map(([n, f]) => '<div class="line">' + renderTotals(n, f.totals, f.stats_reset_unix) + '</div>').join('');
+
+}
+
+async function refresh() {
+  try {
+    const r = await fetch('/api/snapshot');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    render(await r.json());
+    const b = document.getElementById('err-banner');
+    if (b) b.remove();
+  } catch (e) {
+    let b = document.getElementById('err-banner');
+    if (!b) {
+      b = document.createElement('div');
+      b.id = 'err-banner'; b.className = 'banner-err';
+      document.getElementById('app').prepend(b);
+    }
+    b.textContent = 'backend unreachable — ' + e.message;
+  }
+}
+// ── Tab management ─────────────────────────────────────────────────────────────
+let activeTab = 'live';
+
+function showTab(name, updateHash) {
+  activeTab = name;
+  document.getElementById('live-view').style.display = name === 'live' ? '' : 'none';
+  // liq-view: display:flex when visible (CSS applies flex-direction etc); none when hidden
+  document.getElementById('liq-view').style.display  = name === 'liq'  ? 'flex' : 'none';
+  document.getElementById('tab-live').classList.toggle('active', name === 'live');
+  document.getElementById('tab-liq').classList.toggle('active', name === 'liq');
+  // updateHash=false on the cold-load restore so a bare URL isn't rewritten to
+  // #live. On a real switch use replaceState (no history-entry spam per click).
+  if (updateHash !== false) {
+    const want = name === 'live' ? '#live' : '#liq';
+    if (location.hash !== want) history.replaceState(null, '', want);
+  }
+  if (name === 'live') { refresh(); stopLiqIndexPoll(); }
+  else if (name === 'liq') {
+    if (!liqInitialized) { liqInitialized = true; initLiqView(); }
+    startLiqIndexPoll();
+  }
+}
+
+// ── LIQUIDATIONS TAB ───────────────────────────────────────────────────────────
+let liqInitialized  = false;   // has initLiqView() been called?
+let liqRows         = [];      // all loaded block rows in display order
+let liqKeyPos       = new Map(); // "feed:block" → position in liqRows (O(1) nav)
+let liqCursor       = null;    // keyset cursor "<block>,<feed>" for load-more
+let liqAtEnd        = false;   // true when last page returned fewer than limit rows
+let liqLoading      = false;   // fetch guard
+let liqSelectedKey  = null;    // "feed:block" of the selected row; null = none
+let liqDetailKey    = null;    // currently open detail "feed:block" or null
+const liqDetailCache = {};     // feed:block → /api/liqblock response
+let liqIndexTimer   = null;    // setInterval handle for /api/liqindex poll
+let liqDeltaTimer   = null;    // setInterval handle for the 30s delta-prepend
+let liqLastDayShown = '';      // last UTC date string emitted into the list DOM
+let liqDayStats     = {};      // day → {count,won,net}; persistent incremental scorecards
+let liqLastSort     = 'block'; // sort mode of the currently-loaded list
+
+// Stable per-row identity: feed:block is unique and survives prepend, so it
+// (not a positional index) keys DOM ids, selection, and nav.
+function liqKeyOf(row)         { return row.feed + ':' + row.block; }
+function liqRowDomId(feed, blk) { return 'liqrow-' + feed + '-' + blk; }
+
+// initLiqView: build the scaffold inside #liq-view (called once on first activation)
+function initLiqView() {
+  const v = document.getElementById('liq-view');
+  v.innerHTML =
+    '<div class="liq-filters">' +
+      '<label>feed&nbsp;<select class="liq-fi" id="lf-feed" onchange="liqFilterChanged()">' +
+        '<option value="both">all</option>' +
+        '<option value="ETH">ETH</option>' +
+        '<option value="BTC">BTC</option>' +
+        '<option value="CBETH">CBETH</option>' +
+        '<option value="CBXRP">CBXRP</option>' +
+      '</select></label>' +
+      '<label>outcome&nbsp;<select class="liq-fi" id="lf-outcome" onchange="liqFilterChanged()">' +
+        '<option value="all">all</option>' +
+        '<option value="win">won</option>' +
+        '<option value="lost">lost</option>' +
+      '</select></label>' +
+      '<label>min&nbsp;$&nbsp;<input class="liq-fi" type="number" id="lf-minusd"' +
+        ' min="0" step="1000" placeholder="0" onchange="liqFilterChanged()"></label>' +
+      '<span class="liq-sep"></span>' +
+      '<label>from&nbsp;<input class="liq-fi" type="date" id="lf-from" onchange="liqFilterChanged()"></label>' +
+      '<label>to&nbsp;<input class="liq-fi" type="date" id="lf-to" onchange="liqFilterChanged()"></label>' +
+      '<span class="liq-sep"></span>' +
+      '<label>sort&nbsp;<select class="liq-fi" id="lf-sort" onchange="liqFilterChanged()">' +
+        '<option value="block">block</option>' +
+        '<option value="profit">profit</option>' +
+        '<option value="size">size</option>' +
+      '</select></label>' +
+      '<span class="liq-sep"></span>' +
+      '<label>jump&nbsp;<input class="liq-fi liq-jump" type="number" id="lf-jump"' +
+        ' placeholder="block #" onkeydown="if(event.key===\'Enter\')liqJump()"></label>' +
+    '</div>' +
+    '<div class="liq-body">' +
+      '<div class="liq-list-wrap">' +
+        '<div class="liq-thead"><div class="liq-tr hdr">' +
+          '<span>outcome</span><span>block</span><span>time</span><span>feed</span>' +
+          '<span class="liq-cr">liq&nbsp;$</span><span class="liq-cr">&asymp;profit</span>' +
+          '<span class="liq-cr">ours$/tot$</span><span>winner</span><span>contested</span>' +
+        '</div></div>' +
+        '<div id="liq-list" tabindex="0" role="listbox" aria-label="liquidation blocks"></div>' +
+        '<div id="liq-footer" style="display:none"></div>' +
+      '</div>' +
+      '<div class="liq-dp" id="liq-dp" style="display:none" role="region" aria-label="liquidation detail">' +
+        '<div class="liq-dp-hd" id="liq-dp-hd">' +
+          '<span class="dim">select a row</span>' +
+          '<button class="liq-dp-close" onclick="closeLiqDetail()">&times;&nbsp;close</button>' +
+        '</div>' +
+        '<div class="liq-dp-body" id="liq-dp-body"></div>' +
+      '</div>' +
+    '</div>';
+
+  const listEl = document.getElementById('liq-list');
+  listEl.addEventListener('click', function(e) {
+    const row = e.target.closest('.liq-tr.row');
+    if (!row) return;
+    if (row.dataset.feed && row.dataset.block) selectLiqRow(row.dataset.feed + ':' + row.dataset.block);
+  });
+  listEl.addEventListener('keydown', liqKeyDown);
+  listEl.addEventListener('scroll', liqScrollCheck);
+  document.getElementById('liq-dp').addEventListener('keydown', liqPanelKeyDown);
+  loadLiq(true);
+}
+
+function getLiqFilters() {
+  function gv(id) { const el = document.getElementById(id); return el ? el.value : ''; }
+  const feed    = gv('lf-feed')    || 'both';
+  const outcome = gv('lf-outcome') || 'all';
+  const minUsd  = parseFloat(gv('lf-minusd')) || 0;
+  const sort    = gv('lf-sort')    || 'block';
+  const fromStr = gv('lf-from');
+  const toStr   = gv('lf-to');
+  const fromTs  = fromStr ? Math.floor(new Date(fromStr + 'T00:00:00Z').getTime() / 1000) : 0;
+  const toTs    = toStr   ? Math.floor(new Date(toStr   + 'T23:59:59Z').getTime() / 1000) : 0;
+  return { feed, outcome, minUsd, sort, fromTs, toTs };
+}
+
+function buildLiqUrl(filters, cursor) {
+  const p = new URLSearchParams();
+  if (filters.feed && filters.feed !== 'both') p.set('feed', filters.feed);
+  if (filters.outcome && filters.outcome !== 'all') p.set('outcome', filters.outcome);
+  if (filters.minUsd > 0) p.set('min_usd', String(filters.minUsd));
+  if (filters.fromTs > 0) p.set('from', String(filters.fromTs));
+  if (filters.toTs > 0)   p.set('to',   String(filters.toTs));
+  if (filters.sort && filters.sort !== 'block') p.set('sort', filters.sort);
+  p.set('limit', '50');
+  // Only send cursor for the default block sort. Profit/size sorts return a single
+  // server-capped top-N page (not a paginated stream); the server ignores the cursor
+  // for those sorts and would return the same first page forever.
+  if (cursor && (!filters.sort || filters.sort === 'block')) p.set('cursor', cursor);
+  return '/api/liqblocks?' + p.toString();
+}
+
+function liqFilterChanged() { loadLiq(true); }
+
+async function loadLiq(reset) {
+  if (liqLoading) return;
+  if (!reset && liqAtEnd) return;
+  liqLoading = true;
+
+  const listEl = document.getElementById('liq-list');
+  if (!listEl) { liqLoading = false; return; }
+
+  if (reset) {
+    liqRows = []; liqKeyPos = new Map(); liqCursor = null; liqAtEnd = false;
+    liqSelectedKey = null; liqLastDayShown = ''; liqDayStats = {};
+    listEl.innerHTML = '<div class="liq-loading-row dim">loading…</div>';
+    const dpEl = document.getElementById('liq-dp');
+    if (dpEl) dpEl.style.display = 'none';
+    liqDetailKey = null;
+  }
+
+  const filters = getLiqFilters();
+  const url = buildLiqUrl(filters, reset ? null : liqCursor);
+  try {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    if (reset) listEl.innerHTML = '';
+    if (!rows || rows.length === 0) {
+      liqAtEnd = true;
+      if (reset) listEl.innerHTML = '<div class="liq-empty">no liquidations match</div>';
+    } else {
+      // Profit/size sorts return a single server-capped page — stop after the first fetch.
+      if (rows.length < 50 || (filters.sort && filters.sort !== 'block')) liqAtEnd = true;
+      liqLastSort = filters.sort || 'block';
+      appendLiqRows(rows, listEl, liqLastSort);
+      const last = rows[rows.length - 1];
+      liqCursor = last.block + ',' + last.feed;
+      // O(batch) append: existing positions unchanged, new keys added at the tail.
+      const base = liqRows.length;
+      for (let i = 0; i < rows.length; i++) liqKeyPos.set(liqKeyOf(rows[i]), base + i);
+      liqRows = liqRows.concat(rows);
+    }
+  } catch (e) {
+    if (reset) listEl.innerHTML = '<div class="liq-empty">error: ' + esc(e.message) + '</div>';
+    else toast('liq load error: ' + e.message, 'r');
+  }
+  liqLoading = false;
+}
+
+function liqDateUTC(ts) {
+  const d = new Date((ts || 0) * 1000);
+  return d.getUTCFullYear() + '-' +
+    String(d.getUTCMonth() + 1).padStart(2, '0') + '-' +
+    String(d.getUTCDate()).padStart(2, '0');
+}
+
+function liqHHMM(ts) {
+  const d = new Date((ts || 0) * 1000);
+  return String(d.getUTCHours()).padStart(2, '0') + ':' +
+    String(d.getUTCMinutes()).padStart(2, '0');
+}
+
+// dayHeaderInner renders the scorecard spans for a day from the persistent
+// liqDayStats accumulator. net = OUR profit, not total (which includes competitors).
+function dayHeaderInner(day) {
+  const ds = liqDayStats[day] || { count:0, won:0, net:0 };
+  const sign = ds.net >= 0 ? '+' : '-';
+  return '<span class="lhd">' + esc(day) + '</span>' +
+    '<span>' + ds.count + '&nbsp;liq' + (ds.count !== 1 ? 's' : '') + '</span>' +
+    '<span>won&nbsp;' + ds.won + '</span>' +
+    '<span class="' + (ds.net >= 0 ? 'g' : 'r') + '">net&nbsp;' +
+      sign + usdInt(Math.abs(ds.net)) + '</span>';
+}
+
+// appendLiqRows appends a page of rows in O(batch): day stats accumulate
+// incrementally into liqDayStats (never a rescan of the whole loaded list), and
+// every day header touched by this batch — including one rendered on an earlier
+// page — is refreshed from the accumulator, so scorecards stay correct across
+// "load more" boundaries. Day grouping applies to the chronological block sort
+// only; profit/size are top-N and non-chronological, so a flat list is clearer.
+function appendLiqRows(newRows, listEl, sort) {
+  const groupByDay = (sort || 'block') === 'block';
+  const touched = groupByDay ? new Set() : null;
+  let html = '';
+  for (let i = 0; i < newRows.length; i++) {
+    const row = newRows[i];
+    if (groupByDay) {
+      const day = liqDateUTC(row.ts);
+      touched.add(day);
+      let st = liqDayStats[day];
+      if (!st) st = liqDayStats[day] = { count:0, won:0, net:0 };
+      st.count++;
+      if (row.outcome === 'WIN') st.won++;
+      st.net += row.our_profit_usd || 0;
+      if (day !== liqLastDayShown) {
+        liqLastDayShown = day;
+        html += '<div class="liq-day" id="liqday-' + day + '"></div>';
+      }
+    }
+    html += liqRowHtml(row);
+  }
+  listEl.insertAdjacentHTML('beforeend', html);
+  // Refresh every day header touched this batch (fills the just-emitted empty
+  // divs AND updates earlier-page headers that gained rows). O(distinct days).
+  if (groupByDay) {
+    touched.forEach(function(day) {
+      const el = document.getElementById('liqday-' + day);
+      if (el) el.innerHTML = dayHeaderInner(day);
+    });
+  }
+}
+
+function liqRowHtml(row) {
+  // outcome chip
+  let outHtml;
+  if (row.outcome === 'WIN')          outHtml = '<span class="g b">WIN</span>';
+  else if (row.outcome === 'FLOODED_LOST') outHtml = '<span class="r">LOST</span>';
+  else                                outHtml = '<span class="dim">&mdash;</span>';
+
+  // block → Basescan (stop propagation so row click still selects)
+  const blkLink = '<a href="https://basescan.org/block/' + row.block +
+    '" target="_blank" rel="noopener" class="accent-link" onclick="event.stopPropagation()">' +
+    esc(String(row.block)) + '</a>';
+
+  // ≈profit
+  let profHtml;
+  if (row.total_profit_usd > 0) {
+    profHtml = '&#x2248;' + usdInt(row.total_profit_usd);
+  } else if (row.total_profit_usd < 0) {
+    profHtml = '<span class="r">&#x2248;&minus;' + usdInt(-row.total_profit_usd) + '</span>';
+  } else {
+    profHtml = '<span class="dim">&mdash;</span>';
+  }
+
+  // ours / total profit
+  const oP = row.our_profit_usd   > 0 ? usdInt(row.our_profit_usd)   : '—';
+  const tP = row.total_profit_usd > 0 ? usdInt(row.total_profit_usd) : '—';
+
+  // winner cluster
+  const winHtml = row.winner_cluster
+    ? esc(row.winner_cluster)
+    : '<span class="dim">&mdash;</span>';
+
+  // contested
+  const contHtml = row.top_comp_cluster
+    ? esc(row.top_comp_cluster) + '&nbsp;<span class="dim">&times;' + esc(String(row.top_comp_floods)) + '</span>'
+    : '<span class="dim">&mdash;</span>';
+
+  let cls = 'liq-tr row';
+  if      (row.total_liq_usd >= 100000) cls += ' huge';
+  else if (row.total_liq_usd >=  50000) cls += ' big';
+
+  return '<div class="' + cls + '" id="' + liqRowDomId(row.feed, row.block) +
+    '" role="option" aria-selected="false" data-feed="' + esc(row.feed) + '" data-block="' + row.block + '">' +
+    '<span>' + outHtml + '</span>' +
+    '<span>' + blkLink + '</span>' +
+    '<span class="dim">' + liqHHMM(row.ts) + 'Z</span>' +
+    '<span class="dim">' + esc(row.feed) + '</span>' +
+    '<span class="liq-cr">' + usdInt(row.total_liq_usd) + '</span>' +
+    '<span class="liq-cr">' + profHtml + '</span>' +
+    '<span class="liq-cr dim">' + esc(oP) + '/' + esc(tP) + '</span>' +
+    '<span>' + winHtml + '</span>' +
+    '<span>' + contHtml + '</span>' +
+    '</div>';
+}
+
+// ── Row selection + keyboard nav ──────────────────────────────────────────────
+// Selection is keyed by feed:block (stable across prepend), highlight via the
+// row's DOM id, and detail opened for that row.
+function selectLiqRow(key) {
+  if (!liqKeyPos.has(key)) return;
+  if (liqSelectedKey && liqSelectedKey !== key) {
+    const p = liqSelectedKey.split(':');
+    const prev = document.getElementById(liqRowDomId(p[0], p[1]));
+    if (prev) { prev.classList.remove('sel'); prev.setAttribute('aria-selected', 'false'); }
+  }
+  liqSelectedKey = key;
+  const parts = key.split(':');
+  const el = document.getElementById(liqRowDomId(parts[0], parts[1]));
+  if (el) { el.classList.add('sel'); el.setAttribute('aria-selected', 'true'); el.scrollIntoView({ block:'nearest' }); }
+  openLiqDetail(parts[0], parts[1]);
+}
+
+// selectLiqByPos selects the row at a visual position (for keyboard nav).
+function selectLiqByPos(pos) {
+  if (pos < 0 || pos >= liqRows.length) return;
+  selectLiqRow(liqKeyOf(liqRows[pos]));
+}
+
+function liqKeyDown(e) {
+  const pos = liqSelectedKey && liqKeyPos.has(liqSelectedKey) ? liqKeyPos.get(liqSelectedKey) : -1;
+  if      (e.key === 'ArrowDown') { e.preventDefault(); selectLiqByPos(pos + 1); }
+  else if (e.key === 'ArrowUp')   { e.preventDefault(); selectLiqByPos(Math.max(0, pos - 1)); }
+  else if (e.key === 'Escape')    { closeLiqDetail(); }
+  else if (e.key === 'Enter' && pos >= 0) {
+    const r = liqRows[pos]; if (r) openLiqDetail(r.feed, r.block);
+  }
+}
+
+// liqPanelKeyDown: when focus is inside the docked detail panel, Esc closes it
+// (returning focus to the list) and Tab/Shift+Tab wrap within the panel's
+// focusable elements — a lightweight focus trap so keyboard users don't fall
+// out of an open panel (which becomes a full overlay on narrow viewports). The
+// list keeps its own arrow-key nav; this only engages once focus enters the panel.
+function liqPanelKeyDown(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closeLiqDetail(); return; }
+  if (e.key !== 'Tab') return;
+  const dp = document.getElementById('liq-dp');
+  if (!dp) return;
+  const f = dp.querySelectorAll('button, a[href], [tabindex]:not([tabindex="-1"])');
+  if (f.length === 0) return;
+  const first = f[0], last = f[f.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+// ── Docked detail panel ───────────────────────────────────────────────────────
+async function openLiqDetail(feed, block) {
+  const key = String(feed) + ':' + String(block);
+  liqDetailKey = key;
+
+  const dpEl   = document.getElementById('liq-dp');
+  const dpHd   = document.getElementById('liq-dp-hd');
+  const dpBody = document.getElementById('liq-dp-body');
+  if (!dpEl) return;
+
+  dpEl.style.display = 'flex';
+  dpHd.innerHTML = '<span class="liq-dp-blk">#' + esc(String(block)) + '</span>' +
+    '<span class="dim">' + esc(String(feed)) + '</span>' +
+    '<button class="liq-dp-close" onclick="closeLiqDetail()">&times;&nbsp;close</button>';
+  dpBody.innerHTML = '<div class="liq-loading-row dim">loading…</div>';
+
+  if (liqDetailCache[key]) {
+    if (liqDetailKey === key) renderLiqDetail(liqDetailCache[key]);
+    return;
+  }
+  try {
+    const r = await fetch('/api/liqblock?feed=' + encodeURIComponent(String(feed)) +
+      '&block=' + encodeURIComponent(String(block)));
+    if (!r.ok) {
+      if (liqDetailKey === key) dpBody.innerHTML = '<div class="liq-empty dim">not found (404)</div>';
+      return;
+    }
+    const data = await r.json();
+    liqDetailCache[key] = data;
+    if (liqDetailKey === key) renderLiqDetail(data);
+  } catch (e) {
+    if (liqDetailKey === key)
+      dpBody.innerHTML = '<div class="liq-empty dim">error: ' + esc(e.message) + '</div>';
+  }
+}
+
+// fmtGwei renders wei as gwei with NO rounding — the exact value, trailing zeros
+// trimmed (6,000,000 wei → "0.006", 8,472,788 → "0.008472788", 1e9 → "1").
+// Base fees/tips are sub-0.01 gwei, so any rounding was misleading. Built from the
+// integer wei (wei < 2^53 for gas prices) so it's lossless.
+function fmtGwei(wei) {
+  var w = wei || 0;
+  if (w === 0) return '0';
+  var neg = w < 0; w = Math.abs(w);
+  var i = Math.floor(w / 1e9);
+  var f = String(w % 1e9).padStart(9, '0').replace(/0+$/, '');
+  return (neg ? '-' : '') + i + (f ? '.' + f : '');
+}
+
+function renderLiqDetail(data) {
+  const dpHd   = document.getElementById('liq-dp-hd');
+  const dpBody = document.getElementById('liq-dp-body');
+  if (!dpHd || !dpBody) return;
+
+  const blk  = data.block       || {};
+  const att  = data.our_attempt || {};
+  const wins = data.winners     || [];
+
+  // Rebuild header with full detail
+  const baseFeeGwei = fmtGwei(blk.base_fee_wei);
+  const oIdxStr = (blk.oracle_tx_idx != null && blk.oracle_tx_idx >= 0)
+    ? String(blk.oracle_tx_idx) : '—';
+  const blkLink = '<a href="https://basescan.org/block/' + esc(String(blk.block)) +
+    '" target="_blank" rel="noopener" class="accent-link">#' + esc(String(blk.block)) + '</a>';
+
+  // Oracle transmit tip. In-block (oracle tx #N) → the exact transmit tx tip;
+  // carry-forward (#—) → the nearest transmit's tip within the anchor window (same
+  // tip that prices 1k-cost). Gated on oracle_tip_wei>0 (which implies a resolved
+  // anchor, since the tip is only stamped when one is found): a real Base transmit
+  // always pays a >0 tip, so 0 means "no tip data" — e.g. a pre-oracle_tip_wei DB
+  // row that only got the migration default — and we suppress a misleading "0 gwei".
+  const hasOracleTip = blk.oracle_tip_wei != null && blk.oracle_tip_wei > 0;
+  const oracleTipTitle = (blk.oracle_tx_idx != null && blk.oracle_tx_idx >= 0)
+    ? 'oracle transmit tx priority fee (tip)'
+    : 'nearest oracle transmit priority fee (tip) — no transmit in this block';
+  const oracleTipStr = hasOracleTip
+    ? '<span class="dim" title="' + esc(oracleTipTitle) + '">tip&nbsp;' +
+      esc(fmtGwei(blk.oracle_tip_wei)) + '&nbsp;gwei</span>'
+    : '';
+
+  // Flood strategy in effect at this block, stamped from the liquidator's live
+  // /v1/runtime at index time (a runtime switch leaves no other historical trace).
+  // Empty on backfilled / pre-feature rows.
+  const stratStr = blk.flood_strategy
+    ? '<span class="accent" title="flood strategy in effect at this block (stamped from the liquidator runtime at index time)">strat&nbsp;' + esc(blk.flood_strategy) + '</span>'
+    : '';
+  dpHd.innerHTML =
+    '<span class="liq-dp-blk">' + blkLink + '</span>' +
+    '<span class="dim">' + esc(blk.feed || '') + '</span>' +
+    stratStr +
+    '<span class="dim" title="oracle transmit tx position in this block">oracle&nbsp;tx&nbsp;#' + esc(oIdxStr) + '</span>' +
+    '<span class="dim" title="block base fee">base&nbsp;' + esc(baseFeeGwei) + '&nbsp;gwei</span>' +
+    oracleTipStr +
+    '<span class="dim">' + esc(liqDateUTC(blk.ts)) + '&nbsp;' + esc(fmtTime(blk.ts)) + 'Z</span>' +
+    '<button class="liq-dp-close" onclick="closeLiqDetail()">&times;&nbsp;close</button>';
+
+  // 1k-cost line: anchor tip × gas × ETH/USD, for both forward and backfilled
+  // rows. Renders "—" only when a block has no oracle anchor within W.
+  const k1Str = blk.k1_has_cost
+    ? (blk.k1_approx ? '&#x2248;' : '') + '$' + ((blk.k1_cost_usd || 0).toFixed(4)) + '&nbsp;/&nbsp;1k&nbsp;txs'
+    : '<span class="dim">&mdash;</span>';
+
+  let b = '<div style="margin-bottom:6px"><span class="dim">1k txs cost: </span>' + k1Str + '</div>';
+
+  // OUR ATTEMPT — depth/timing first (per spec), tip secondary
+  b += '<div class="liq-dp-sh first">our attempt</div>';
+  const ourFlood = att.floods || blk.our_floods || 0;
+  const winDepth = blk.winner_depth || 0;
+  const ourTip   = fmtGwei(att.best_tip_wei || blk.our_best_tip_wei);
+  const winTip   = fmtGwei(blk.winner_tip_wei);
+  const outcome  = att.outcome || blk.outcome;
+  const ourN     = att.our_n   || blk.our_n || 0;
+
+  b += '<div>depth: <b>us&nbsp;' + ourFlood + '</b>&nbsp;vs&nbsp;winner&nbsp;<b>' + winDepth + '</b></div>';
+
+  if (outcome === 'WIN') {
+    b += '<div class="g b">&#10003;&nbsp;WON &mdash; ' + ourN + '&nbsp;liq' + (ourN !== 1 ? 's' : '') + '</div>';
+  } else if (outcome === 'FLOODED_LOST') {
+    b += '<div class="r">flooded &mdash; lost the race</div>';
+  } else if (ourFlood > 0) {
+    b += '<div class="dim">flooded &mdash; no land</div>';
+  } else {
+    b += '<div class="dim">did not flood</div>';
+  }
+  // WHERE our flood landed relative to the oracle — the DIAGNOSTIC. Only txs that
+  // land AFTER the oracle transmit can liquidate (a tx before the update runs on
+  // the stale price). So we show only the after-oracle span + count, the before
+  // count (wasted flood), and how it sits vs the winner's liq — so a positioning
+  // loss reads at a glance ("0 after oracle" / "all after winner #W"). post_n=-1 is
+  // a pre-feature row not yet re-indexed → nothing shown.
+  const pN = att.post_n, pLo = att.post_lo, pHi = att.post_hi;
+  const oIdx = (blk.oracle_tx_idx != null && blk.oracle_tx_idx >= 0) ? blk.oracle_tx_idx : null;
+  const winIdx = (wins.length && wins[0].tx_idx != null) ? wins[0].tx_idx : null;
+  if (ourFlood > 0 && pN != null && pN >= 0) {
+    if (oIdx == null) {
+      // transmit was in an earlier block → all our flood here is post-oracle
+      const span = (pLo === pHi) ? '#' + pLo : '#' + pLo + '&ndash;#' + pHi;
+      if (pLo >= 0) b += '<div style="margin-top:2px">our flood: <b>' + pN + '</b>&nbsp;tx' + (pN !== 1 ? 's' : '') +
+        '&nbsp;&nbsp;<b>' + span + '</b> <span class="dim">(oracle transmitted earlier)</span></div>';
+    } else if (pN === 0) {
+      b += '<div class="r" style="margin-top:2px"><b>0</b>&nbsp;of&nbsp;' + ourFlood + '&nbsp;flood txs after oracle&nbsp;#' +
+        esc(String(oIdx)) + ' &mdash; all landed before the price update (unwinnable)</div>';
+    } else {
+      const before = ourFlood - pN;
+      const span = (pLo === pHi) ? '#' + pLo : '#' + pLo + '&ndash;#' + pHi;
+      let line = 'after oracle&nbsp;#' + esc(String(oIdx)) + ':&nbsp;<b>' + pN + '</b>&nbsp;tx' + (pN !== 1 ? 's' : '') +
+        '&nbsp;&nbsp;<b>' + span + '</b>';
+      if (before > 0) line += ' <span class="dim">(' + before + '&nbsp;before, unwinnable)</span>';
+      b += '<div style="margin-top:2px">' + line + '</div>';
+      if (winIdx != null) {
+        let w;
+        if (pLo > winIdx) w = '&rarr; winner&nbsp;#' + esc(String(winIdx)) + ', so all ' + pN + ' landed too late';
+        else if (pHi < winIdx) w = '&rarr; all ahead of winner&nbsp;#' + esc(String(winIdx)) + ' (lost for another reason)';
+        else w = '&rarr; winner&nbsp;#' + esc(String(winIdx)) + ' sits within our range';
+        b += '<div class="dim" style="margin-top:1px">&nbsp;&nbsp;' + w + '</div>';
+      }
+    }
+  }
+  // tip secondary line
+  b += '<div class="dim" style="margin-top:2px">tip: us&nbsp;' + esc(ourTip) +
+    '&nbsp;gwei&nbsp;&nbsp;vs&nbsp;winner&nbsp;' + esc(winTip) + '&nbsp;gwei</div>';
+
+  // Winners table
+  b += '<div class="liq-dp-sh">winners&nbsp;(' + wins.length + ')</div>';
+  if (wins.length === 0) {
+    b += '<div class="dim">none recorded</div>';
+  } else {
+    b += '<div class="liq-wt-wrap"><table class="liq-wt"><thead><tr>' +
+      '<th>#</th><th>tx</th><th>cluster</th><th class="nr">pos</th>' +
+      '<th class="nr">profit</th><th class="nr">base</th><th class="nr">tip&nbsp;gwei</th><th class="nr">gas</th>' +
+      '</tr></thead><tbody>';
+    for (let i = 0; i < wins.length; i++) {
+      const w = wins[i];
+      const txLink = w.tx_hash
+        ? '<a href="https://basescan.org/tx/' + esc(w.tx_hash) + '" target="_blank" rel="noopener"' +
+          ' class="accent-link" title="' + esc(w.tx_hash) + '">#' + esc(String(w.tx_idx)) + '</a>'
+        : '<span class="dim">#' + esc(String(w.tx_idx)) + '</span>';
+      const wBase = fmtGwei(w.base_fee_wei);
+      const wTip  = fmtGwei(w.tip_wei);
+      const wGas  = w.gas_used ? Math.round(w.gas_used / 1000) + 'k' : '—';
+      b += '<tr>' +
+        '<td class="dim">' + (i + 1) + '</td>' +
+        '<td>' + txLink + '</td>' +
+        '<td>' + esc(w.cluster || '—') + '</td>' +
+        '<td class="nr">' + (w.n_positions || 0) + '</td>' +
+        '<td class="nr">' + usdInt(w.profit_usd || 0) + '</td>' +
+        '<td class="nr dim">' + esc(wBase) + '</td>' +
+        '<td class="nr">' + esc(wTip) + '</td>' +
+        '<td class="nr dim">' + esc(wGas) + '</td>' +
+        '</tr>';
+    }
+    b += '</tbody></table></div>';
+  }
+
+  // Flood tips — per-competitor tip distribution (how many txs each cluster sent
+  // at each tip level). Sorted by cluster total desc, then tip count desc.
+  const ft = blk.flood_tips;
+  if (ft && ft.length) {
+    b += '<div class="liq-dp-sh">flood tips &mdash; tip distribution</div>';
+    b += '<div class="liq-wt-wrap"><table class="liq-wt"><thead><tr>' +
+      '<th>cluster</th><th class="nr">tip&nbsp;gwei</th><th class="nr">txs</th>' +
+      '</tr></thead><tbody>';
+    for (let ci = 0; ci < ft.length; ci++) {
+      const cg = ft[ci];
+      b += '<tr><td colspan="3" class="ftg"><b>' + esc(cg.c) + '</b>' +
+        '<span class="dim">&nbsp;&times;' + esc(String(cg.n)) + '&nbsp;txs</span></td></tr>';
+      const tips = cg.t || [];
+      for (let ti = 0; ti < tips.length; ti++) {
+        b += '<tr><td></td>' +
+          '<td class="nr">' + esc(fmtGwei(tips[ti][0])) + '</td>' +
+          '<td class="nr">' + esc(String(tips[ti][1])) + '</td></tr>';
+      }
+    }
+    b += '</tbody></table></div>';
+  }
+
+  // Flooding block stats — lazy, on-chain per-block session reconstruction.
+  // Nothing is fetched until the button is clicked; the container below fills
+  // in place (and the server caches the result for instant re-open).
+  b += '<div class="liq-dp-sh">flooding block stats</div>';
+  b += '<div><button class="liq-fs-btn" onclick="loadFloodSession(\'' +
+    esc(String(blk.feed || '')) + '\',' + Number(blk.block) + ',this)">show flooding block stats</button></div>';
+
+  // Top sections scroll together in .liq-dp-top; #liq-fs is a flex sibling that,
+  // once populated, grows to fill the panel and scrolls the session table itself
+  // (so its horizontal scrollbar stays pinned at the panel bottom).
+  dpBody.innerHTML = '<div class="liq-dp-top">' + b + '</div>' +
+    '<div id="liq-fs" class="liq-fs"></div>';
+}
+
+// ── Flooding block stats (lazy on-chain reconstruction) ──────────────────────
+// Fetches /api/floodsession only on button click; renders the per-block session
+// (sent / txs / fullness / tip percentiles / landed triplets) into #liq-fs.
+async function loadFloodSession(feed, block, btn) {
+  const box = document.getElementById('liq-fs');
+  if (!box) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'loading…'; }
+  box.innerHTML = '<div class="liq-loading-row dim">reconstructing session from chain…</div>';
+  try {
+    const r = await fetch('/api/floodsession?feed=' + encodeURIComponent(String(feed)) +
+      '&block=' + encodeURIComponent(String(block)));
+    if (!r.ok) {
+      box.innerHTML = '<div class="liq-empty dim">reconstruction failed (' + r.status + ')</div>';
+      if (btn) { btn.disabled = false; btn.textContent = 'retry flooding block stats'; }
+      return;
+    }
+    renderFloodSession(box, await r.json());
+    if (btn) { btn.style.display = 'none'; }
+  } catch (e) {
+    box.innerHTML = '<div class="liq-empty dim">error: ' + esc(e.message) + '</div>';
+    if (btn) { btn.disabled = false; btn.textContent = 'retry flooding block stats'; }
+  }
+}
+
+// fmtOff renders a signed offset like "+10" / "0" / "-3".
+function fmtOff(o) { return (o > 0 ? '+' : '') + o; }
+// last3 shows only the last 3 digits of a block number (unique within a session
+// window of <1000 blocks) to save width. The full number stays in links/titles.
+function last3(n) { return String(Number(n) % 1000).padStart(3, '0'); }
+
+// feeCell renders a wei fee as a gwei cell, or an em-dash when absent (0).
+function feeCell(wei) { return '<td class="nr dim">' + (wei ? esc(fmtGwei(wei)) : '—') + '</td>'; }
+
+// tipsCell renders the block's OWN tip percentiles. When W8 window data is present
+// it becomes a toggle: clicking expands 5 stacked rows (W8@-2..-6) below the block.
+function tipsCell(tipStr, w8) {
+  if (!w8) return '<td class="nr dim liq-fs-tips">' + esc(tipStr) + '</td>';
+  return '<td class="nr dim liq-fs-tips w8-toggle" data-w8=\'' + JSON.stringify(w8) +
+    '\' title="click: W8 tip windows (8 blocks) at lags -2..-6">' +
+    esc(tipStr) + ' <span class="w8-caret">&#9656;</span></td>';
+}
+
+// toggleW8 expands/collapses the 5 stacked W8-window percentile rows under a block.
+function toggleW8(cell) {
+  const tr = cell.closest('tr');
+  if (!tr) return;
+  const caret = cell.querySelector('.w8-caret');
+  const nxt = tr.nextElementSibling;
+  if (nxt && nxt.classList.contains('w8-detail')) { nxt.remove(); if (caret) caret.innerHTML = '&#9656;'; return; }
+  let w8; try { w8 = JSON.parse(cell.getAttribute('data-w8') || 'null'); } catch (e) { return; }
+  if (!w8) return;
+  let mini = '<table class="w8-mini"><thead><tr><td></td><td>P10</td><td>P40</td><td>P60</td><td>P70</td><td>P80</td></tr></thead><tbody>';
+  for (let i = 0; i < w8.length; i++) {
+    const a = w8[i] || [];
+    const has = a.some(x => x > 0);
+    mini += '<tr><td class="w8-lbl">W8@-' + (i + 2) + '</td>' +
+      (has ? a.map(x => '<td>' + esc(fmtGwei(x)) + '</td>').join('') : '<td colspan="5" class="dim">no tips in window</td>') +
+      '</tr>';
+  }
+  mini += '</tbody></table>';
+  const dr = document.createElement('tr');
+  dr.className = 'w8-detail';
+  dr.innerHTML = '<td colspan="' + tr.cells.length + '"><div class="w8-wrap">' + mini + '</div></td>';
+  tr.after(dr);
+  if (caret) caret.innerHTML = '&#9662;';
+}
+
+function renderFloodSession(box, d) {
+  box.onclick = (e) => { const c = e.target.closest('.w8-toggle'); if (c) { e.preventDefault(); toggleW8(c); } };
+  if (d.unavailable) {
+    box.innerHTML = '<div class="liq-empty dim">' + esc(d.reason || 'unavailable') + '</div>';
+    return;
+  }
+  const rows = d.rows || [];
+  // We did not flood this round → show the block LANDSCAPE (per-block txs /
+  // fullness / tip percentiles) so the competitive context is still visible.
+  if (d.landscape) {
+    if (!rows.length) { box.innerHTML = '<div class="liq-empty dim">we did not flood this round.</div>'; return; }
+    let h = '<div class="liq-fs-hd r">we did not flood this oracle round</div>' +
+      '<div class="dim" style="font-size:11px;margin-bottom:4px">block landscape around the oracle — competitor detail is in FLOOD TIPS above &nbsp;·&nbsp; via ' + esc(d.source || '') + '</div>';
+    if (d.truncated) h += '<div class="r" style="font-size:11px">⚠ window incomplete (a block couldn\'t be fetched)</div>';
+    let t = '<div class="liq-wt-wrap liq-fs-wrap"><table class="liq-wt liq-fs-tbl"><thead><tr>' +
+      '<th>block</th><th class="nr">txs</th><th class="nr">full</th>' +
+      '<th class="nr" title="block actual baseFeePerGas (gwei)">base</th>' +
+      '<th class="nr" title="block tip percentiles P10/P40/P60/P70/P80 (gwei) — click a row to expand the W8 tip windows @-2..-6">tips&nbsp;P10–80</th>' +
+      '</tr></thead><tbody>';
+    for (const row of rows) {
+      const tips = row.tips || [];
+      const tipCell = tips.length ? tips.map(x => fmtGwei(x)).join('/') : '—';
+      const mark = row.oracle ? '&nbsp;<span class="accent">oracle&nbsp;#' + esc(String(d.oracle_tx_idx)) + '</span>' : '';
+      const blkCls = row.oracle ? 'liq-fs-oracle' : (row.unavail ? 'dim' : '');
+      t += '<tr class="' + blkCls + '">' +
+        '<td class="liq-fs-blk"><a href="https://basescan.org/block/' + row.b + '" target="_blank" rel="noopener" class="accent-link" title="' + row.b + '">' + last3(row.b) + '</a>' + mark + '</td>' +
+        '<td class="nr dim">' + (row.unavail ? '—' : row.txs) + '</td>' +
+        '<td class="nr dim">' + (row.unavail ? '—' : (row.full || 0).toFixed(2)) + '</td>' +
+        feeCell(row.unavail ? 0 : row.base) +
+        tipsCell(tipCell, row.unavail ? null : row.w8) +
+        '</tr>';
+    }
+    t += '</tbody></table></div>';
+    box.innerHTML = h + t;
+    return;
+  }
+  if (!rows.length) {
+    box.innerHTML = '<div class="liq-empty dim">no flooding activity found around this oracle block.</div>';
+    return;
+  }
+  // Session header: oracle block, landed-offset range, target range, totals.
+  const offRange = (d.min_offset === d.max_offset)
+    ? fmtOff(d.min_offset) : fmtOff(d.min_offset) + '…' + fmtOff(d.max_offset);
+  let h = '<div class="liq-fs-hd">' +
+    '<span class="dim">landed offset</span> <b>' + esc(offRange) + '</b>' +
+    ' &nbsp;·&nbsp; <span class="dim">targets</span> ' + esc(String(d.target_lo)) + '–' + esc(String(d.target_hi)) +
+    ' &nbsp;·&nbsp; <span class="dim">sent</span> <b>' + esc(String(d.total_sent)) + '</b>' +
+    ' &nbsp;·&nbsp; <span class="dim">via</span> ' + esc(d.source || '') +
+    '</div>';
+  if (d.truncated) {
+    h += '<div class="r" style="font-size:11px">⚠ activity reached the window edge — may be incomplete</div>';
+  }
+
+  // block / sent / landed-total / by-target-breakdown up front (the payload),
+  // then context (txs, fullness, and the P10-P80 tip landscape). `landed` is the
+  // per-block TOTAL (matches the OUR ATTEMPT "depth: us N" on the oracle block);
+  // `by target` breaks it into (target, count, offset) groups that sum to it.
+  const startOff = Number(d.start_block) - Number(d.oracle_block); // ≤0
+  const stopOff = Number(d.stop_block) - Number(d.oracle_block);   // ≥0
+  let t = '<div class="liq-wt-wrap liq-fs-wrap"><table class="liq-wt liq-fs-tbl"><thead><tr>' +
+    '<th>block</th><th class="nr">sent</th><th class="nr">landed</th>' +
+    '<th class="nr" title="block tx-index span of OUR flood txs that landed in this block — compare to the oracle transmit (oracle # on its row). Base orders equal-tip txs by flashblock arrival, not tip.">our&nbsp;idx</th>' +
+    '<th>by&nbsp;target&nbsp;(target,n,off)</th>' +
+    '<th class="nr">txs</th><th class="nr">full</th>' +
+    '<th class="nr" title="base-fee cap: median maxFeePerGas of OUR flood txs targeting this block (gwei)">cap</th>' +
+    '<th class="nr" title="block actual baseFeePerGas (gwei)">base</th>' +
+    '<th class="nr" title="block tip percentiles P10/P40/P60/P70/P80 (gwei) — click a row to expand the W8 tip windows @-2..-6">tips&nbsp;P10–80</th>' +
+    '</tr></thead><tbody>';
+  for (const row of rows) {
+    const tips = row.tips || [];
+    const tipCell = tips.length ? tips.map(x => fmtGwei(x)).join('/') : '—';
+    // (target,n,off) groups with SHORT targets, 2 per line, wrapping to more
+    // lines when there are more — keeps this column narrow so txs/full/tips stay
+    // visible without a horizontal scroll. Each line is nowrap so a pair never splits.
+    const pairs = (row.land || []).map(x => '(' + last3(x.t) + ',' + x.n + ',' + fmtOff(x.o) + ')');
+    if (row.untargeted) pairs.push('(?,' + row.untargeted + ',?)');
+    let by;
+    if (pairs.length) {
+      const lines = [];
+      for (let i = 0; i < pairs.length; i += 2) lines.push('<span class="fsln">' + esc(pairs.slice(i, i + 2).join(' ')) + '</span>');
+      by = lines.join('');
+    } else { by = '<span class="dim">—</span>'; }
+    const landN = row.land_n || 0;
+    // "our idx": on the ORACLE ROW, show ONLY the after-oracle span + count (pn/plo/phi)
+    // — the winnable subset (txs before the transmit run on the stale price). "0 after"
+    // in red = the whole flood missed the window. Other rows show the full span (ilo/ihi).
+    let idxCell;
+    if (row.oracle && d.oracle_tx_idx != null && d.oracle_tx_idx >= 0 && landN) {
+      const pn = row.pn || 0, plo = row.plo || 0, phi = row.phi || 0;
+      if (pn === 0) {
+        idxCell = '<span class="r" title="0 of our ' + landN + ' landings sit after the oracle transmit #' + esc(String(d.oracle_tx_idx)) + ' — all before the price update (unwinnable)">0&nbsp;after&nbsp;#' + esc(String(d.oracle_tx_idx)) + '</span>';
+      } else {
+        idxCell = '<span title="' + pn + ' of our ' + landN + ' landings after oracle #' + esc(String(d.oracle_tx_idx)) + ' (winnable); ' + (landN - pn) + ' before">#' + plo + (phi !== plo ? '&ndash;#' + phi : '') + '&nbsp;<span class="dim">(' + pn + '&uarr;)</span></span>';
+      }
+    } else {
+      const iLo = row.ilo || 0, iHi = row.ihi || 0;
+      idxCell = landN ? ('#' + iLo + (iHi !== iLo ? '&ndash;#' + iHi : '')) : '<span class="dim">—</span>';
+    }
+    const blkCls = row.oracle ? 'liq-fs-oracle' : (row.unavail ? 'dim' : '');
+    let mark = '';
+    if (row.b === d.start_block) mark = '&nbsp;<span class="dim">start&nbsp;(' + esc(fmtOff(startOff)) + ')</span>';
+    else if (row.b === d.stop_block) mark = '&nbsp;<span class="dim">stop&nbsp;(' + esc(fmtOff(stopOff)) + ')</span>';
+    if (row.oracle) mark += '&nbsp;<span class="accent">oracle&nbsp;#' + esc(String(d.oracle_tx_idx)) + '</span>';
+    t += '<tr class="' + blkCls + '">' +
+      '<td class="liq-fs-blk"><a href="https://basescan.org/block/' + row.b + '" target="_blank" rel="noopener" class="accent-link" title="' + row.b + '">' + last3(row.b) + '</a>' + mark + '</td>' +
+      '<td class="nr">' + (row.sent ? '<b>' + row.sent + '</b>' : '<span class="dim">0</span>') + '</td>' +
+      '<td class="nr">' + (landN ? '<b>' + landN + '</b>' : '<span class="dim">0</span>') + '</td>' +
+      '<td class="nr dim">' + idxCell + '</td>' +
+      '<td class="liq-fs-land">' + by + '</td>' +
+      '<td class="nr dim">' + (row.unavail ? '—' : row.txs) + '</td>' +
+      '<td class="nr dim">' + (row.unavail ? '—' : (row.full || 0).toFixed(2)) + '</td>' +
+      feeCell(row.cap) +
+      feeCell(row.unavail ? 0 : row.base) +
+      tipsCell(tipCell, row.unavail ? null : row.w8) +
+      '</tr>';
+  }
+  t += '</tbody></table></div>';
+  box.innerHTML = h + t;
+}
+
+function closeLiqDetail() {
+  const dpEl = document.getElementById('liq-dp');
+  if (dpEl) dpEl.style.display = 'none';
+  liqDetailKey = null;
+  if (liqSelectedKey) {
+    const p = liqSelectedKey.split(':');
+    const el = document.getElementById(liqRowDomId(p[0], p[1]));
+    if (el) { el.classList.remove('sel'); el.setAttribute('aria-selected', 'false'); }
+    liqSelectedKey = null;
+  }
+  const listEl = document.getElementById('liq-list');
+  if (listEl) listEl.focus();
+}
+
+// ── Scroll → load more ────────────────────────────────────────────────────────
+function liqScrollCheck() {
+  const list = document.getElementById('liq-list');
+  if (!list || liqLoading || liqAtEnd) return;
+  if (list.scrollHeight - list.scrollTop - list.clientHeight < 300) loadLiq(false);
+}
+
+// ── Jump to block ─────────────────────────────────────────────────────────────
+async function liqJump() {
+  const inp = document.getElementById('lf-jump');
+  if (!inp || !inp.value) return;
+  const blockN = parseInt(inp.value, 10);
+  if (!blockN || blockN <= 0) { toast('enter a valid block number', 'y'); return; }
+  const feedEl  = document.getElementById('lf-feed');
+  const feedSel = feedEl ? feedEl.value : 'both';
+  const tryFeeds = feedSel === 'both' ? Object.keys((lastSnapshot && lastSnapshot.feeds) || {}) : [feedSel.toUpperCase()];
+
+  for (const f of tryFeeds) {
+    try {
+      const r = await fetch('/api/liqblock?feed=' + encodeURIComponent(f) + '&block=' + blockN);
+      if (r.ok) {
+        const data = await r.json();
+        const key = f + ':' + blockN;
+        liqDetailCache[key] = data;
+        liqDetailKey = key;
+        const dpEl = document.getElementById('liq-dp');
+        if (dpEl) dpEl.style.display = 'flex';
+        renderLiqDetail(data);
+        return;
+      }
+    } catch (e) { /* try next feed */ }
+  }
+  toast('block ' + blockN + ' not found in liqstore', 'y');
+}
+
+// ── 30s delta-prepend (spec §9): surface newly-finalized liqs without a reload ──
+// rebuildKeyPos rebuilds the key→position map after liqRows is mutated in a way
+// that shifts positions (prepend). O(N); only runs on the rare delta.
+function rebuildKeyPos() {
+  liqKeyPos = new Map();
+  for (let i = 0; i < liqRows.length; i++) liqKeyPos.set(liqKeyOf(liqRows[i]), i);
+}
+
+// renderLiqList re-renders the whole list DOM from liqRows (day stats reset +
+// recomputed by appendLiqRows). Used after a prepend so day headers/scorecards
+// stay correct. Selection highlight + open detail panel are restored by the caller.
+function renderLiqList() {
+  const listEl = document.getElementById('liq-list');
+  if (!listEl) return;
+  liqDayStats = {}; liqLastDayShown = '';
+  listEl.innerHTML = '';
+  appendLiqRows(liqRows, listEl, liqLastSort);
+  rebuildKeyPos();
+}
+
+// prependLiqRows inserts genuinely-new (newest-first) rows at the top, preserving
+// the viewport for a user reading history and never touching the open detail panel.
+function prependLiqRows(fresh) {
+  const listEl = document.getElementById('liq-list');
+  if (!listEl) return;
+  const beforeH = listEl.scrollHeight;
+  const beforeTop = listEl.scrollTop;
+  const atTop = beforeTop <= 2;
+
+  liqRows = fresh.concat(liqRows);
+  renderLiqList();
+
+  // Viewport: if the user was reading history (scrolled down), keep the same rows
+  // under the viewport (add the grown height). If pinned at the top (watching the
+  // live feed), stay at top so the new rows are revealed.
+  if (atTop) {
+    listEl.scrollTop = 0;
+  } else {
+    listEl.scrollTop = beforeTop + (listEl.scrollHeight - beforeH);
+  }
+
+  // Re-apply the selection highlight (the open detail panel DOM is untouched).
+  if (liqSelectedKey) {
+    const p = liqSelectedKey.split(':');
+    const el = document.getElementById(liqRowDomId(p[0], p[1]));
+    if (el) { el.classList.add('sel'); el.setAttribute('aria-selected', 'true'); }
+  }
+}
+
+// liqDeltaPoll fetches the newest page and prepends any rows we don't already
+// hold. Only for the live chronological view (block sort, no bounded "to" date).
+async function liqDeltaPoll() {
+  if (activeTab !== 'liq' || document.visibilityState !== 'visible') return;
+  if (liqLoading || liqRows.length === 0) return;
+  const filters = getLiqFilters();
+  if ((filters.sort || 'block') !== 'block' || filters.toTs > 0) return;
+  const sig = JSON.stringify(filters); // detect a filter/sort change mid-fetch
+  try {
+    const r = await fetch(buildLiqUrl(filters, null)); // newest page, no cursor
+    if (!r.ok) return;
+    const rows = await r.json();
+    // Bail if a load reset the list or the filter/sort changed while the delta
+    // fetch was in flight — else stale-filter rows would be prepended.
+    if (liqLoading || sig !== JSON.stringify(getLiqFilters())) return;
+    if (!rows || rows.length === 0) return;
+    // rows are newest-first: collect the leading run we don't already hold; the
+    // first key we already have means the rest are older and already loaded.
+    const fresh = [];
+    for (const row of rows) {
+      if (liqKeyPos.has(liqKeyOf(row))) break;
+      fresh.push(row);
+    }
+    if (fresh.length > 0) prependLiqRows(fresh);
+  } catch (e) { /* ignore — next tick retries */ }
+}
+
+// ── /api/liqindex backfill-frontier poll ──────────────────────────────────────
+async function pollLiqIndex() {
+  if (activeTab !== 'liq' || document.visibilityState !== 'visible') return;
+  try {
+    const r = await fetch('/api/liqindex');
+    if (!r.ok) return;
+    const meta = await r.json();
+    const footer = document.getElementById('liq-footer');
+    if (!footer) return;
+    const indexing = Object.values(meta).some(m => !m.backfill_done);
+    if (indexing) {
+      const parts = [];
+      for (const [feed, m] of Object.entries(meta)) {
+        if (!m.backfill_done) {
+          const frontier = m.frontier > 0 ? (m.frontier / 1e6).toFixed(2) + 'M' : '?';
+          // backfill_cursor counts down toward the frontier; show both so progress is honest.
+          // We do NOT compute a % because we don't know the backfill start block.
+          if (m.backfill_cursor > 0) {
+            const cur = (m.backfill_cursor / 1e6).toFixed(2) + 'M';
+            parts.push(feed.toUpperCase() + ' cursor ' + cur + ' → frontier ' + frontier);
+          } else {
+            parts.push(feed.toUpperCase() + ' frontier ' + frontier);
+          }
+        }
+      }
+      footer.textContent = 'indexing history… ' + parts.join(', ') + ' — older events still loading';
+      footer.style.display = '';
+    } else {
+      footer.style.display = 'none';
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function startLiqIndexPoll() {
+  if (liqIndexTimer) return;
+  pollLiqIndex();
+  liqIndexTimer = setInterval(pollLiqIndex, 10000);
+  if (!liqDeltaTimer) liqDeltaTimer = setInterval(liqDeltaPoll, 30000);
+}
+
+function stopLiqIndexPoll() {
+  if (liqIndexTimer) { clearInterval(liqIndexTimer); liqIndexTimer = null; }
+  if (liqDeltaTimer) { clearInterval(liqDeltaTimer); liqDeltaTimer = null; }
+}
+
+// Synthetic explorer links must not navigate to unrelated real chain records.
+document.addEventListener('click', function(event) {
+  const a = event.target.closest('a');
+  if (a && new URL(a.href, location.href).origin !== location.origin) {
+    event.preventDefault();
+    if (!a.closest('.liq-tr.row')) toast('Synthetic record: no external chain transaction exists.', 'y');
+  }
+}, true);
+
+// Restore tab from hash, then start polling (showTab calls refresh() for live).
+// updateHash=false so a bare URL (no hash) is left clean on cold load.
+(function() {
+  const h = location.hash;
+  if (h === '#liq') showTab('liq', false); else showTab('live', false);
+}());
+
+// Only poll while the LIVE tab is active AND the page is visible.
+setInterval(function() {
+  if (activeTab === 'live' && document.visibilityState === 'visible') refresh();
+}, 2000);
+
+// When the page becomes visible again, refresh/resume the appropriate tab.
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible') {
+    if (activeTab === 'live') refresh();
+    else if (activeTab === 'liq') startLiqIndexPoll();
+  } else {
+    if (activeTab === 'liq') stopLiqIndexPoll();
+  }
+});
+</script>
+</body>
 </html>
